@@ -763,7 +763,8 @@ function Add-SNOWMIDUserRoles {
     )
     $RequestedRoles = Get-SNOWObject -Table 'sys_user_role' -Query "name=$($Roles -join ',')"
     $UserRoles = Get-SNOWObject -Table 'sys_user_has_role' -Query "user=$UserSysId"
-    $RoleList = $UserRoles.role
+    $RoleList = @()
+    $RoleList +=$UserRoles.role
     foreach ($Role in $RequestedRoles) {
         if ($RoleList.value -contains $Role.sys_id) {
             Write-PSFMessage "User [$UserSysId] already has role $($Role.name)"
