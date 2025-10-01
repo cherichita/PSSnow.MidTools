@@ -116,7 +116,7 @@ module GetBuildContext 'modules/servicenow.midtools.deploymentscript.bicep' = {
               'echo $MID_SERVER_PEM_BASE64 | base64 -d > /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/agent && sh bin/scripts/manage-certificates.sh -a DefaultSecurityKeyPairHandle /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/; ./init setup -f; ./init start'
           )
       }
-      $SnowConn = Resolve-SNOWMIDEnvironmentAuth
+      $SnowConn = Resolve-SNOWMIDEnvironmentAuth -SkipTagUpdate
       $DeploymentScriptOutputs.EnvVars.MID_CONFIG_mid__pinned__version = (Get-SNOWMidVersion)
       $BuildResults = Build-SNOWMidImage -Verbose
       $DeploymentScriptOutputs.ImageState = Resolve-SNOWMIDImageState

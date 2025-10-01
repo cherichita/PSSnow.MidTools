@@ -13,7 +13,7 @@ param(
     [switch]$UpdateCredentials,
     [switch]$Force,
     $PodePort = 8099,
-    [string]$TemplateOutputPath = $env:SN_TEMPLATE_OUTPUT_PATH ?? "$PSScriptRoot/out",
+    [string]$TemplateOutputPath = $env:SN_TEMPLATE_OUTPUT_PATH ?? "$PSScriptRoot/src/arm_out",
     [string]$TemplateStorageAccount = "snowmiddeploy",
     [string]$TemplateStorageContainer = "snowmid-azure-templates"
 )
