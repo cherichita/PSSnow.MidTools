@@ -11,9 +11,9 @@ languages:
 ---
 # azure_servicenow_mid_acs_base
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3a%2f%2fgithub.com%2fcherichita%2fPSSnow.MidTools%2ftree%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json/uiFormDefinitionUri/https%3a%2f%2fgithub.com%2fcherichita%2fPSSnow.MidTools%2ftree%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fcreateUiDefinition.json)
-[![Deploy To Azure Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#view/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3a%2f%2fgithub.com%2fcherichita%2fPSSnow.MidTools%2ftree%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json/uiFormDefinitionUri/https%3a%2f%2fgithub.com%2fcherichita%2fPSSnow.MidTools%2ftree%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fcreateUiDefinition.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fgithub.com%2fcherichita%2fPSSnow.MidTools%2ftree%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#view/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3a%2f%2fraw.githubusercontent.com%2fcherichita%2fPSSnow.MidTools%2frefs%2fheads%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json/uiFormDefinitionUri/https%3a%2f%2fraw.githubusercontent.com%2fcherichita%2fPSSnow.MidTools%2frefs%2fheads%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fcreateUiDefinition.json)
+[![Deploy To Azure Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#view/Microsoft_Azure_CreateUIDef/CustomDeploymentBlade/uri/https%3a%2f%2fraw.githubusercontent.com%2fcherichita%2fPSSnow.MidTools%2frefs%2fheads%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json/uiFormDefinitionUri/https%3a%2f%2fraw.githubusercontent.com%2fcherichita%2fPSSnow.MidTools%2frefs%2fheads%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fcreateUiDefinition.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fcherichita%2fPSSnow.MidTools%2frefs%2fheads%2fdevelopment%2fsrc%2farm_out%2fazure_servicenow_mid_acs_base%2fmainTemplate.json)
 
 Base ServiceNow MID Server deployment with ACS
 
@@ -44,7 +44,7 @@ Click the "Deploy to Azure" button above to deploy this template through the Azu
 ```bash
 az deployment group create \
   --resource-group myResourceGroup \
-  --template-uri https://github.com/cherichita/PSSnow.MidTools/tree/development/src/arm_out/azure_servicenow_mid_acs_base/mainTemplate.json \
+  --template-uri https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src/arm_out/azure_servicenow_mid_acs_base/mainTemplate.json \
   --parameters @parameters.json
 ```
 
@@ -53,7 +53,7 @@ az deployment group create \
 ```powershell
 New-AzResourceGroupDeployment \
   -ResourceGroupName "myResourceGroup" \
-  -TemplateUri "https://github.com/cherichita/PSSnow.MidTools/tree/development/src/arm_out/azure_servicenow_mid_acs_base/mainTemplate.json" \
+  -TemplateUri "https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src/arm_out/azure_servicenow_mid_acs_base/mainTemplate.json" \
   -TemplateParameterFile "parameters.json"
 ```
 
