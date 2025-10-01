@@ -1,0 +1,216 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2021-09-09/uiFormDefinition.schema.json",
+  "view": {
+    "kind": "Form",
+    "properties": {
+      "title": "ServiceNow MID Server Deployment",
+      "steps": [
+        {
+          "name": "basics",
+          "label": "Basics",
+          "elements": [
+            {
+              "name": "storageAccountsApi",
+              "type": "Microsoft.Solutions.ArmApiControl",
+              "request": {
+                "method": "POST",
+                "path": "/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                "body": {
+                  "query": "resources\n| where type =~ \"microsoft.storage/storageaccounts\"\n  and isnotempty(tags.SnowEnvironment)\n| join kind=leftouter (\n    resourcecontainers\n    | where type == \"microsoft.resources/subscriptions\"\n    | project subscriptionId, subscriptionName = name\n) on subscriptionId\n| project\n    label = strcat(tags.SnowEnvironment, \" - \", subscriptionName, \" - \", coalesce(tags.SnowHost, \"unknown\")),\n    description = location,\n    value = pack(\n        \"url\", properties.primaryEndpoints.blob,\n        \"resourceId\", id,\n        \"subscriptionId\", subscriptionId,\n        \"subscriptionName\", subscriptionName,\n        \"resourceGroup\", resourceGroup,\n        \"location\", location,\n        \"tags\", tags\n    )\n| order by label asc"
+                }
+              }
+            },
+            {
+              "name": "providerDropDown",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Environment Name",
+              "toolTip": "The environment name is used to identify the ServiceNow instance and Azure resources.",
+              "constraints": {
+                "allowedValues": "[steps('basics').storageAccountsApi.data]",
+                "required": true
+              },
+              "visible": true
+            },
+            {
+              "name": "aas",
+              "type": "Microsoft.Common.TextBlock",
+              "visible": "[not(equals(steps('basics').providerDropDown.subscriptionId, ''))]",
+              "options": {
+                "text": "[concat('/subscriptions/', steps('basics').providerDropDown.subscriptionId, '/resourceGroups/', steps('basics').providerDropDown.resourceGroup)]",
+                "link": {
+                  "label": "[steps('basics').providerDropDown.tags.SnowHost]",
+                  "uri": "[steps('basics').providerDropDown.tags.SnowHost]"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "midServer",
+          "label": "MID Server Config",
+          "elements": [
+            {
+              "name":"containerRegistryArmApi",
+              "type": "Microsoft.Solutions.ArmApiControl",
+              "request": {
+                "method": "POST",
+                "path": "/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                "body": {
+                    "query": "[concat('resources | where type == \"microsoft.containerregistry/registries\" and id == \"', steps('basics').providerDropDown.tags.SnowContainerRegistryId, '\" | project id, loginServer=properties.loginServer')]"
+                }
+              }
+            },
+            {
+              "name": "containerRegistryInfo",
+              "type": "Microsoft.Common.TextBlock",
+              "visible": true,
+              "options": {
+                "text": "[string(steps('midServer').containerRegistryArmApi.data)]"
+              }
+            },
+            {
+              "name": "midServersApi",
+              "type": "Microsoft.Solutions.ArmApiControl",
+              "request": {
+                "method": "POST",
+                "path": "/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01",
+                "body": {
+                  "query": "[concat('resources | where type =~ \"microsoft.containerinstance/containergroups\" and tags.SnowEnvironment == \"', steps('basics').providerDropDown.tags.SnowEnvironment ,'\" and tags.SnowMidServerName != \"\"  | project label = name, description = tags.SnowHost, value = tags | order by label asc')]"
+                }
+              }
+            },
+            {
+              "name": "announcement",
+              "type": "Microsoft.Common.TextBlock",
+              "visible": true,
+              "options": {
+                "text": "[concat('/subscriptions/', steps('basics').providerDropDown.subscriptionId, '/resourceGroups/', steps('basics').providerDropDown.resourceGroup)]"
+              }
+            },
+            {
+              "name": "midServerName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "MID Server Name",
+              "placeholder": "[concat('az',steps('basics').providerDropDown.tags.SnowEnvironment, 'mid')]",
+              "toolTip": "Provide a unique name for the MID Server.",
+              "constraints": {
+                "required": true,
+                "regex": "^[a-zA-Z][A-Za-z0-9]{3,15}$",
+                "validationMessage": "Only alphanumeric characters are allowed, and the value must be 3 to 15 characters.",
+                "validations": [
+                  {
+                    "isValid": "^[a-zA-Z][a-zA-Z0-9]{3,15}$",
+                    "message": "Only alphanumeric characters are allowed, must start with a letter, and the value must be 4 to 15 characters."
+                  },
+                  {
+                    "isValid": "[empty(filter(steps('midServer').midServersApi.data, (item) => equals(item.label, steps('midServer').midServerName)))]",
+                    "message": "MID Server name already exists."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "midServerCluster",
+              "type": "Microsoft.Common.TextBox",
+              "label": "MID Server Cluster",
+              "defaultValue": "azcluster",
+              "toolTip": "Provide a cluster name for the MID Server.",
+              "constraints": {
+                "required": true,
+                "regex": "^[a-zA-Z][A-Za-z0-9]{3,15}$",
+                "validationMessage": "Only alphanumeric characters are allowed, and the value must be 3 to 15 characters."
+              }
+            },
+            {
+              "name": "memoryInGB",
+              "type": "Microsoft.Common.Slider",
+              "min": 2,
+              "max": 8,
+              "label": "Memory",
+              "subLabel": "GB",
+              "defaultValue": 2,
+              "showStepMarkers": true,
+              "toolTip": "Pick the size in GB",
+              "constraints": {
+                "required": false
+              },
+              "visible": true
+            },
+            {
+              "name": "numCpu",
+              "type": "Microsoft.Common.Slider",
+              "min": 1,
+              "max": 4,
+              "label": "CPU Cores",
+              "subLabel": "",
+              "defaultValue": 1,
+              "showStepMarkers": false,
+              "toolTip": "Pick the number of CPU cores",
+              "constraints": {
+                "required": false
+              },
+              "visible": true
+            },
+            {
+              "name":"customImageName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Custom Image Name",
+              "defaultValue": "snow_mid_custom",
+              "toolTip": "Provide a custom image name for the MID Server.",
+              "constraints": {
+                "required": false,
+                "validations": [
+                  {
+                    "isValid": "[startsWith(steps('midServer').customImageName, 'snow_mid_')]",
+                    "message": "Custom image name must start with 'snow_mid_'."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "customDockerfileContent",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Custom Dockerfile Content",
+              "multiLine": true,
+              "defaultValue": "FROM localhost/snow_mid_custom:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133\r\nARG AZ_PWSH_VERSION=\"14.4.0\"\r\nARG AZ_CLI_VERSION=\"2.77.0\"\r\nARG PWSH_VERSION=\"7.5.3\"\r\nARG MID_USERNAME=mid\r\n\r\nUSER root\r\n\r\nRUN dnf update -y && \\\r\n    dnf install -y  ca-certificates curl gnupg && \\\r\n    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/pki/rpm-gpg/microsoft.asc.gpg > /dev/null && \\\r\n    curl -sL https://packages.microsoft.com/config/rhel/9/prod.repo | tee /etc/yum.repos.d/microsoft-prod.repo && \\\r\n    dnf check-update -y && \\\r\n    dnf install -y azure-cli-${AZ_CLI_VERSION}-1.el9 && \\\r\n    dnf install -y https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-1.rh.x86_64.rpm && \\\r\n    dnf clean all -y\r\n\r\nUSER $MID_USERNAME\r\n\r\nRUN pwsh -C \"Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted\" && \\\r\n    pwsh -C \"Install-Module -Name Az -MinimumVersion ${AZ_PWSH_VERSION} -MaximumVersion ${AZ_PWSH_VERSION} -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\" && \\\r\n    pwsh -C \"Install-Module -Name PSDepend -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\" && \\\r\n    pwsh -C \"Install-Module -Name InvokeBuild -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\"\r\n\r\nENTRYPOINT [\"/opt/snc_mid_server/init\", \"start\"]",
+              "toolTip": "Provide custom Dockerfile content for the MID Server.",
+              "constraints": {
+                "required": false,
+                "validations": [
+                  {
+                    "isValid": "[startsWith(steps('midServer').customDockerfileContent, 'FROM')]",
+                    "message": "Dockerfile content cannot be empty."
+                  }
+                ]
+              }              
+            },
+            {
+              "name": "forceBuildCustomImage",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Force Build Custom Image",
+              "toolTip": "Force build the custom image. This will rebuild the image even if it already exists.",
+              "constraints": {
+                "required": false
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "outputs": {
+      "kind": "ResourceGroup",
+      "location": "[steps('basics').providerDropDown.location.name]",
+      "resourceGroupId": "[concat('/subscriptions/', steps('basics').providerDropDown.subscriptionId, '/resourceGroups/', steps('basics').providerDropDown.resourceGroup)]",
+      "parameters": {
+        "devopsEnvironmentName": "[steps('basics').providerDropDown.tags.SnowEnvironment]",
+        "midServerName": "[steps('midServer').midServerName]",
+        "midServerCluster": "[steps('midServer').midServerCluster]",
+        "memoryInGB": "[steps('midServer').memoryInGB]",
+        "numCpu": "[steps('midServer').numCpu]",
+        "customImageName": "[steps('midServer').customImageName]",
+        "customDockerfileContent": "[steps('midServer').customDockerfileContent]",
+        "forceBuildCustomImage": "[steps('midServer').forceBuildCustomImage]"
+      }
+    }
+  }
+}

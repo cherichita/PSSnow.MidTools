@@ -1,0 +1,25 @@
+FROM localhost/snow_mid_base:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133
+ARG AZ_PWSH_VERSION="14.4.0"
+ARG AZ_CLI_VERSION="2.77.0"
+ARG PWSH_VERSION="7.5.3"
+ARG MID_USERNAME=mid
+
+USER root
+
+RUN dnf update -y && \
+    dnf install -y  ca-certificates curl gnupg && \
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/pki/rpm-gpg/microsoft.asc.gpg > /dev/null && \
+    curl -sL https://packages.microsoft.com/config/rhel/9/prod.repo | tee /etc/yum.repos.d/microsoft-prod.repo && \
+    dnf check-update -y && \
+    dnf install -y azure-cli-${AZ_CLI_VERSION}-1.el9 && \
+    dnf install -y https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-1.rh.x86_64.rpm && \
+    dnf clean all -y
+
+USER $MID_USERNAME
+
+RUN pwsh -C "Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted" && \
+    pwsh -C "Install-Module -Name Az -MinimumVersion ${AZ_PWSH_VERSION} -MaximumVersion ${AZ_PWSH_VERSION} -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense" && \
+    pwsh -C "Install-Module -Name PSDepend -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense" && \
+    pwsh -C "Install-Module -Name InvokeBuild -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense"
+
+ENTRYPOINT ["/opt/snc_mid_server/init", "start"]

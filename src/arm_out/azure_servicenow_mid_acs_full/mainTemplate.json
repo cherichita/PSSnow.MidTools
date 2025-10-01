@@ -1,0 +1,3831 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "15271925043668451014"
+    }
+  },
+  "definitions": {
+    "roleDefinition": {
+      "type": "object",
+      "properties": {
+        "roleDefinitionId": {
+          "type": "string"
+        },
+        "principalId": {
+          "type": "string"
+        },
+        "principalType": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "parameters": {
+    "networkResourceGroupName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "The name of the network resource group."
+      }
+    },
+    "deployNetwork": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the network resources?"
+      }
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "aci-vnet-default",
+      "metadata": {
+        "description": "The name of the virtual network"
+      }
+    },
+    "vnetAddressPrefixes": {
+      "type": "array",
+      "defaultValue": [
+        "10.112.0.0/16"
+      ],
+      "metadata": {
+        "description": "The address prefixes for the virtual network"
+      }
+    },
+    "subnetName": {
+      "type": "string",
+      "defaultValue": "aci-subnet-default",
+      "metadata": {
+        "description": "The name of the subnet"
+      }
+    },
+    "nsgName": {
+      "type": "string",
+      "defaultValue": "snowmid-nsg-default",
+      "metadata": {
+        "description": "The name of the network security group"
+      }
+    },
+    "subnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.112.0.0/24",
+      "metadata": {
+        "description": "The address prefix for the subnet"
+      }
+    },
+    "devopsEnvironmentName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 5,
+      "metadata": {
+        "description": "The name of the environment. This will be used to tag, and identify resources."
+      }
+    },
+    "deployPermissions": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Permissions? Requires Owner permissions on the resource group."
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Location for the resources"
+      }
+    },
+    "runValidationScript": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Run the validation script to test connectivity to ServiceNow"
+      }
+    },
+    "adminEntraEntities": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Additional Azure AD Objects with principalId and principalType to be added to the Key Vault access policy"
+      }
+    },
+    "snowHost": {
+      "type": "string",
+      "metadata": {
+        "description": "ServiceNow Host. Will be stored as a tag on the storage account"
+      }
+    },
+    "deployCredentials": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Set to true and provide snowCredentials or snowCredentialsJson to deploy the ServiceNow credentials to Key Vault."
+      }
+    },
+    "snowCredentials": {
+      "type": "secureObject",
+      "defaultValue": {},
+      "metadata": {
+        "description": "SNOW Credentials Object - Must match Set-SNOWMidEnvironmentSecret parameters"
+      }
+    },
+    "snowCredentialsJson": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "The snowCredentials object in JSON format."
+      }
+    },
+    "containerSubnetId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Subnet ID for the container. Must have access to ServiceNow instance, ACR, and ARM Services at a minimum."
+      }
+    },
+    "additionalStorageSubnetIds": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Subnet IDs to allow access to the storage account"
+      }
+    },
+    "virtualNetworkRoleId": {
+      "type": "string",
+      "defaultValue": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c",
+      "metadata": {
+        "description": "The ID of the virtual network role. This is used to assign the role to the subnet. Default is Contributor on the virtual network."
+      }
+    },
+    "containerRegistrySubscription": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]",
+      "metadata": {
+        "description": "ACR Subscription"
+      }
+    },
+    "containerRegistryResourceGroup": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR Resource Group"
+      }
+    },
+    "containerRegistryName": {
+      "type": "string",
+      "metadata": {
+        "description": "ACR Registry Name"
+      }
+    },
+    "additionalResourceGroupRoleAssignments": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Must contain roleDefinitionId, principalId, and principalType. This is used to assign additional roles to the resource group."
+      }
+    }
+  },
+  "resources": {
+    "aciNetwork": {
+      "condition": "[parameters('deployNetwork')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "ServiceNow-MID-ACI-Network",
+      "subscriptionId": "[subscription().subscriptionId]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "resourceGroupName": {
+            "value": "[parameters('networkResourceGroupName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[parameters('vnetName')]"
+          },
+          "nsgName": {
+            "value": "[parameters('nsgName')]"
+          },
+          "vnetAddressPrefixes": {
+            "value": "[parameters('vnetAddressPrefixes')]"
+          },
+          "subnetName": {
+            "value": "[parameters('subnetName')]"
+          },
+          "subnetAddressPrefix": {
+            "value": "[parameters('subnetAddressPrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "8536332756212547568"
+            }
+          },
+          "parameters": {
+            "resourceGroupName": {
+              "type": "string",
+              "defaultValue": "snmid-rg-network-default"
+            },
+            "location": {
+              "type": "string"
+            },
+            "vnetName": {
+              "type": "string",
+              "defaultValue": "aci-vnet-default",
+              "metadata": {
+                "description": "The name of the virtual network"
+              }
+            },
+            "vnetAddressPrefixes": {
+              "type": "array",
+              "defaultValue": [
+                "10.112.0.0/16"
+              ],
+              "metadata": {
+                "description": "The address prefixes for the virtual network"
+              }
+            },
+            "subnetName": {
+              "type": "string",
+              "defaultValue": "aci-subnet-default",
+              "metadata": {
+                "description": "The name of the subnet"
+              }
+            },
+            "nsgName": {
+              "type": "string",
+              "defaultValue": "snowmid-nsg-default",
+              "metadata": {
+                "description": "The name of the network security group"
+              }
+            },
+            "subnetAddressPrefix": {
+              "type": "string",
+              "defaultValue": "10.112.0.0/24",
+              "metadata": {
+                "description": "The address prefix for the subnet"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "aci-nsg-default",
+              "resourceGroup": "[parameters('resourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "nsgName": {
+                    "value": "[parameters('nsgName')]"
+                  },
+                  "location": {
+                    "value": "[parameters('location')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "1837823739175691279"
+                    }
+                  },
+                  "parameters": {
+                    "nsgName": {
+                      "type": "string"
+                    },
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]"
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/networkSecurityGroups",
+                      "apiVersion": "2024-05-01",
+                      "name": "[parameters('nsgName')]",
+                      "location": "[parameters('location')]",
+                      "properties": {
+                        "securityRules": [
+                          {
+                            "name": "AllowInbound-443",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound to destination port 443",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "443",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1001,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "AllowInbound-dbports",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound to database ports",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1002,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "1433-1434",
+                                "2382-2383",
+                                "5432",
+                                "27016-27019",
+                                "3306",
+                                "33060",
+                                "6446-6449",
+                                "50000-50001",
+                                "1521-1525",
+                                "8000",
+                                "8200"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "Allow-AzureLoadBalancer-Inbound",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow AzureLoadBalancer inbound",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "*",
+                              "sourceAddressPrefix": "AzureLoadBalancer",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1003,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "fileshare-access",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound fileshare access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1004,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "111",
+                                "139",
+                                "445",
+                                "2048",
+                                "2049"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "service_bus",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound service bus access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1005,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "5671",
+                                "5672"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "event_hub",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound event hub access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "9093",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1006,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "mongodb",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound mongodb access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1007,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "1024-1030"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "elastic",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound elastic access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "9243",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1008,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "redis",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound redis access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1009,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "6379-6380"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "Deny-udp-Inbound",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Deny UDP inbound",
+                              "protocol": "Udp",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Deny",
+                              "priority": 4095,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "Deny-tcp-Inbound",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Deny TCP inbound",
+                              "protocol": "Tcp",
+                              "sourcePortRange": "*",
+                              "destinationPortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Deny",
+                              "priority": 4096,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "AllowInbound-https-9443-9455",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound to destination port 9443-9455",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1000,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "9443-9455"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          },
+                          {
+                            "name": "Allow-BatchAccount-Inbound",
+                            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                            "properties": {
+                              "description": "Allow inbound batch account access",
+                              "protocol": "*",
+                              "sourcePortRange": "*",
+                              "sourceAddressPrefix": "*",
+                              "destinationAddressPrefix": "*",
+                              "access": "Allow",
+                              "priority": 1010,
+                              "direction": "Inbound",
+                              "sourcePortRanges": [],
+                              "destinationPortRanges": [
+                                "29876-29877"
+                              ],
+                              "sourceAddressPrefixes": [],
+                              "destinationAddressPrefixes": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "nsgId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsgName'))]"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "aci-vnet-default",
+              "resourceGroup": "[parameters('resourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "vnetName": {
+                    "value": "[parameters('vnetName')]"
+                  },
+                  "vnetAddressPrefixes": {
+                    "value": "[parameters('vnetAddressPrefixes')]"
+                  },
+                  "location": {
+                    "value": "[parameters('location')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "17086086555966853470"
+                    }
+                  },
+                  "parameters": {
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]"
+                    },
+                    "vnetName": {
+                      "type": "string",
+                      "defaultValue": "aci-vnet-default"
+                    },
+                    "vnetAddressPrefixes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "resources": {
+                    "virtualNetwork": {
+                      "type": "Microsoft.Network/virtualNetworks",
+                      "apiVersion": "2024-05-01",
+                      "name": "[parameters('vnetName')]",
+                      "location": "[parameters('location')]",
+                      "properties": {
+                        "addressSpace": {
+                          "addressPrefixes": "[parameters('vnetAddressPrefixes')]"
+                        },
+                        "privateEndpointVNetPolicies": "Disabled",
+                        "enableDdosProtection": false
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "virtualNetwork": {
+                      "type": "object",
+                      "value": "[reference('virtualNetwork', '2024-05-01', 'full')]"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "aci-subnet-default",
+              "resourceGroup": "[parameters('resourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "subnetName": {
+                    "value": "[parameters('subnetName')]"
+                  },
+                  "workloadNsgId": {
+                    "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'aci-nsg-default'), '2022-09-01').outputs.nsgId.value]"
+                  },
+                  "virtualNetworkName": {
+                    "value": "[parameters('vnetName')]"
+                  },
+                  "subnetAddressPrefix": {
+                    "value": "[parameters('subnetAddressPrefix')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "10084542209442595167"
+                    }
+                  },
+                  "parameters": {
+                    "virtualNetworkName": {
+                      "type": "string"
+                    },
+                    "subnetName": {
+                      "type": "string"
+                    },
+                    "subnetAddressPrefix": {
+                      "type": "string",
+                      "defaultValue": "10.166.85.0/26"
+                    },
+                    "workloadNsgId": {
+                      "type": "string"
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/virtualNetworks/subnets",
+                      "apiVersion": "2024-05-01",
+                      "name": "[format('{0}/{1}', parameters('virtualNetworkName'), parameters('subnetName'))]",
+                      "properties": {
+                        "addressPrefix": "[parameters('subnetAddressPrefix')]",
+                        "networkSecurityGroup": {
+                          "id": "[parameters('workloadNsgId')]"
+                        },
+                        "serviceEndpoints": [
+                          {
+                            "service": "Microsoft.Storage",
+                            "locations": [
+                              "canadacentral",
+                              "canadaeast"
+                            ]
+                          }
+                        ],
+                        "delegations": [
+                          {
+                            "name": "ACIDelegationService",
+                            "properties": {
+                              "serviceName": "Microsoft.ContainerInstance/containerGroups"
+                            },
+                            "type": "Microsoft.Network/virtualNetworks/subnets/delegations"
+                          }
+                        ],
+                        "privateEndpointNetworkPolicies": "Enabled",
+                        "privateLinkServiceNetworkPolicies": "Enabled"
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "subnetId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]"
+                    },
+                    "subnetName": {
+                      "type": "string",
+                      "value": "[parameters('subnetName')]"
+                    },
+                    "subnetAddressPrefix": {
+                      "type": "string",
+                      "value": "[reference(resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName')), '2024-05-01').addressPrefix]"
+                    },
+                    "virtualNetworkId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'aci-nsg-default')]",
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'aci-vnet-default')]"
+              ]
+            }
+          ],
+          "outputs": {
+            "subnetId": {
+              "type": "string",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'aci-subnet-default'), '2022-09-01').outputs.subnetId.value]"
+            }
+          }
+        }
+      }
+    },
+    "midEnvironment": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[format('ServiceNow-MID-ACI-{0}', parameters('devopsEnvironmentName'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "devopsEnvironmentName": {
+            "value": "[parameters('devopsEnvironmentName')]"
+          },
+          "deployPermissions": {
+            "value": "[parameters('deployPermissions')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "runValidationScript": {
+            "value": "[parameters('runValidationScript')]"
+          },
+          "adminEntraEntities": {
+            "value": "[parameters('adminEntraEntities')]"
+          },
+          "snowHost": {
+            "value": "[parameters('snowHost')]"
+          },
+          "deployCredentials": {
+            "value": "[parameters('deployCredentials')]"
+          },
+          "snowCredentials": {
+            "value": "[parameters('snowCredentials')]"
+          },
+          "snowCredentialsJson": {
+            "value": "[parameters('snowCredentialsJson')]"
+          },
+          "containerSubnetId": "[if(parameters('deployNetwork'), createObject('value', reference('aciNetwork').outputs.subnetId.value), createObject('value', parameters('containerSubnetId')))]",
+          "additionalStorageSubnetIds": {
+            "value": "[parameters('additionalStorageSubnetIds')]"
+          },
+          "virtualNetworkRoleId": {
+            "value": "[parameters('virtualNetworkRoleId')]"
+          },
+          "containerRegistrySubscription": {
+            "value": "[parameters('containerRegistrySubscription')]"
+          },
+          "containerRegistryResourceGroup": {
+            "value": "[parameters('containerRegistryResourceGroup')]"
+          },
+          "containerRegistryName": {
+            "value": "[parameters('containerRegistryName')]"
+          },
+          "additionalResourceGroupRoleAssignments": {
+            "value": "[parameters('additionalResourceGroupRoleAssignments')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "9626355095179850893"
+            }
+          },
+          "parameters": {
+            "devopsEnvironmentName": {
+              "type": "string",
+              "defaultValue": "dev",
+              "maxLength": 5,
+              "metadata": {
+                "description": "The name of the environment. This will be used to tag, and identify resources."
+              }
+            },
+            "deploymentKey": {
+              "type": "string",
+              "defaultValue": "[utcNow()]",
+              "metadata": {
+                "description": "A unique string to append to some of the deployments."
+              }
+            },
+            "deployPermissions": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Deploy Permissions? This will deploy the necessary permissions for the DevOps identities to the resources. Requires OWNER permissions on the resource group."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Location for the resources"
+              }
+            },
+            "runValidationScript": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Run the validation script to test connectivity to ServiceNow"
+              }
+            },
+            "adminEntraEntities": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Additional Azure AD Objects with principalId and principalType to be added to the Key Vault access policy, and admin role assignments."
+              }
+            },
+            "snowHost": {
+              "type": "string",
+              "metadata": {
+                "description": "ServiceNow Instance name (e.g., dev123456)"
+              }
+            },
+            "deployCredentials": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Set to true and provide snowCredentials or snowCredentialsJson to deploy the ServiceNow credentials to Key Vault."
+              }
+            },
+            "snowCredentials": {
+              "type": "secureObject",
+              "defaultValue": {},
+              "metadata": {
+                "description": "SNOW Credentials Object - Must match Set-SNOWMidEnvironmentSecret parameters"
+              }
+            },
+            "snowCredentialsJson": {
+              "type": "securestring",
+              "defaultValue": "",
+              "metadata": {
+                "description": "The snowCredentials object in JSON format."
+              }
+            },
+            "containerSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet ID for the container. Must have access to ServiceNow instance, ACR, and ARM Services at a minimum."
+              }
+            },
+            "additionalStorageSubnetIds": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Subnet IDs to allow access to the storage account"
+              }
+            },
+            "virtualNetworkRoleId": {
+              "type": "string",
+              "defaultValue": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c",
+              "metadata": {
+                "description": "The ID of the virtual network role. This is used to assign the role to the subnet. Default is Contributor on the virtual network."
+              }
+            },
+            "keyVaultName": {
+              "type": "string",
+              "defaultValue": "[format('snkv-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+              "maxLength": 24,
+              "metadata": {
+                "description": "Key Vault Name"
+              }
+            },
+            "keyVaultResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "Key Vault Resource Group"
+              }
+            },
+            "keyVaultSubscription": {
+              "type": "string",
+              "defaultValue": "[subscription().subscriptionId]",
+              "metadata": {
+                "description": "Key Vault Subscription"
+              }
+            },
+            "containerRegistrySubscription": {
+              "type": "string",
+              "defaultValue": "[subscription().subscriptionId]",
+              "metadata": {
+                "description": "ACR Subscription"
+              }
+            },
+            "containerRegistryResourceGroup": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]",
+              "metadata": {
+                "description": "ACR Resource Group"
+              }
+            },
+            "containerRegistryName": {
+              "type": "string",
+              "metadata": {
+                "description": "ACR Registry Name"
+              }
+            },
+            "additionalResourceGroupRoleAssignments": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Additional Resource Group Role Assignments"
+              }
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "adminEntitiesTagArray",
+                "count": "[length(parameters('adminEntraEntities'))]",
+                "input": "[format('{0}:{1}', parameters('adminEntraEntities')[copyIndex('adminEntitiesTagArray')].principalId, parameters('adminEntraEntities')[copyIndex('adminEntitiesTagArray')].principalType)]"
+              }
+            ],
+            "snowCredentialsParsed": "[if(empty(parameters('snowCredentialsJson')), parameters('snowCredentials'), json(parameters('snowCredentialsJson')))]",
+            "containerRegistryId": "[format('/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.ContainerRegistry/registries/{2}', parameters('containerRegistrySubscription'), parameters('containerRegistryResourceGroup'), parameters('containerRegistryName'))]",
+            "keyVaultId": "[format('/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.KeyVault/vaults/{2}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup'), parameters('keyVaultName'))]",
+            "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+            "userAssignedIdentityName": "[format('snow-devops-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+            "midServerIdentityName": "[format('snow-midserver-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+            "adminEntitiesTag": "[join(variables('adminEntitiesTagArray'), ',')]",
+            "environmentTags": {
+              "SnowEnvironment": "[parameters('devopsEnvironmentName')]",
+              "SnowStorageAccount": "[variables('storageAccountName')]",
+              "SnowContainerRegistry": "[format('{0}.azurecr.io', parameters('containerRegistryName'))]",
+              "SnowKeyVaultId": "[variables('keyVaultId')]",
+              "SnowContainerSubnetId": "[parameters('containerSubnetId')]",
+              "SnowContainerRegistryId": "[variables('containerRegistryId')]",
+              "SnowDevopsIdentity": "[variables('userAssignedIdentityName')]",
+              "SnowMidServerIdentity": "[variables('midServerIdentityName')]",
+              "SnowHost": "[parameters('snowHost')]",
+              "SnowAdminEntities": "[variables('adminEntitiesTag')]"
+            },
+            "storageAccountSubnets": "[union(createArray(parameters('containerSubnetId')), parameters('additionalStorageSubnetIds'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[variables('userAssignedIdentityName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(variables('environmentTags'), createObject('SnowIdentityType', 'DevOps'))]"
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[variables('midServerIdentityName')]",
+              "location": "[parameters('location')]",
+              "tags": "[union(variables('environmentTags'), createObject('SnowIdentityType', 'MidServer'))]"
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-01-01",
+              "name": "[variables('storageAccountName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2",
+              "properties": {
+                "networkAcls": {
+                  "copy": [
+                    {
+                      "name": "virtualNetworkRules",
+                      "count": "[length(variables('storageAccountSubnets'))]",
+                      "input": {
+                        "id": "[variables('storageAccountSubnets')[copyIndex('virtualNetworkRules')]]",
+                        "action": "Allow",
+                        "state": "Succeeded"
+                      }
+                    }
+                  ],
+                  "bypass": "AzureServices",
+                  "defaultAction": "Deny"
+                }
+              },
+              "tags": "[variables('environmentTags')]"
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/tableServices",
+              "apiVersion": "2024-01-01",
+              "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices', variables('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'config')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices', variables('storageAccountName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "[parameters('keyVaultName')]",
+              "subscriptionId": "[parameters('keyVaultSubscription')]",
+              "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "keyVaultName": {
+                    "value": "[parameters('keyVaultName')]"
+                  },
+                  "location": {
+                    "value": "[parameters('location')]"
+                  },
+                  "tenantId": {
+                    "value": "[subscription().tenantId]"
+                  },
+                  "objectIds": {
+                    "value": "[union(createArray(reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId), map(parameters('adminEntraEntities'), lambda('entity', lambdaVariables('entity').principalId)))]"
+                  },
+                  "secretsPermissions": {
+                    "value": [
+                      "all",
+                      "purge"
+                    ]
+                  },
+                  "keysPermissions": {
+                    "value": [
+                      "all",
+                      "purge"
+                    ]
+                  },
+                  "certificatePermissions": {
+                    "value": [
+                      "all",
+                      "purge"
+                    ]
+                  },
+                  "enabledForDeployment": {
+                    "value": true
+                  },
+                  "enabledForTemplateDeployment": {
+                    "value": true
+                  },
+                  "enabledForDiskEncryption": {
+                    "value": true
+                  },
+                  "skuName": {
+                    "value": "standard"
+                  },
+                  "secretsObject": {
+                    "value": {
+                      "secrets": []
+                    }
+                  },
+                  "tags": {
+                    "value": "[variables('environmentTags')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "1851550645429973512"
+                    }
+                  },
+                  "parameters": {
+                    "keyVaultName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Specifies the name of the key vault."
+                      }
+                    },
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]",
+                      "metadata": {
+                        "description": "Specifies the Azure location where the key vault should be created."
+                      }
+                    },
+                    "enabledForDeployment": {
+                      "type": "bool",
+                      "defaultValue": true,
+                      "metadata": {
+                        "description": "Specifies whether Azure Virtual Machines are permitted to retrieve certificates stored as secrets from the key vault."
+                      }
+                    },
+                    "enabledForDiskEncryption": {
+                      "type": "bool",
+                      "defaultValue": false,
+                      "metadata": {
+                        "description": "Specifies whether Azure Disk Encryption is permitted to retrieve secrets from the vault and unwrap keys."
+                      }
+                    },
+                    "enabledForTemplateDeployment": {
+                      "type": "bool",
+                      "defaultValue": true,
+                      "metadata": {
+                        "description": "Specifies whether Azure Resource Manager is permitted to retrieve secrets from the key vault."
+                      }
+                    },
+                    "tenantId": {
+                      "type": "string",
+                      "defaultValue": "[subscription().tenantId]",
+                      "metadata": {
+                        "description": "Specifies the Azure Active Directory tenant ID that should be used for authenticating requests to the key vault. Get it by using Get-AzSubscription cmdlet."
+                      }
+                    },
+                    "objectIds": {
+                      "type": "array",
+                      "metadata": {
+                        "description": "Specifies the objects ID of a user, service principal or security group in the Azure Active Directory tenant for the vault. The object ID must be unique for the list of access policies. Get it by using Get-AzADUser or Get-AzADServicePrincipal cmdlets."
+                      }
+                    },
+                    "keysPermissions": {
+                      "type": "array",
+                      "defaultValue": [
+                        "all"
+                      ],
+                      "metadata": {
+                        "description": "Specifies the permissions to keys in the vault. Valid values are: all, encrypt, decrypt, wrapKey, unwrapKey, sign, verify, get, list, create, update, import, delete, backup, restore, recover, and purge."
+                      }
+                    },
+                    "secretsPermissions": {
+                      "type": "array",
+                      "defaultValue": [
+                        "list",
+                        "get",
+                        "set",
+                        "delete",
+                        "backup",
+                        "restore",
+                        "recover",
+                        "purge"
+                      ],
+                      "metadata": {
+                        "description": "Specifies the permissions to secrets in the vault. Valid values are: all, get, list, set, delete, backup, restore, recover, and purge."
+                      }
+                    },
+                    "certificatePermissions": {
+                      "type": "array",
+                      "defaultValue": [
+                        "get",
+                        "list",
+                        "delete",
+                        "create",
+                        "import",
+                        "update"
+                      ],
+                      "metadata": {
+                        "description": "Certificate Permission"
+                      }
+                    },
+                    "skuName": {
+                      "type": "string",
+                      "defaultValue": "standard",
+                      "allowedValues": [
+                        "standard",
+                        "premium"
+                      ],
+                      "metadata": {
+                        "description": "Specifies whether the key vault is a standard vault or a premium vault."
+                      }
+                    },
+                    "secretsObject": {
+                      "type": "secureObject",
+                      "metadata": {
+                        "description": "Specifies all secrets {\"secretName\":\"\",\"secretValue\":\"\"} wrapped in a secure object."
+                      }
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": {}
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.KeyVault/vaults",
+                      "apiVersion": "2023-07-01",
+                      "name": "[parameters('keyVaultName')]",
+                      "location": "[parameters('location')]",
+                      "properties": {
+                        "copy": [
+                          {
+                            "name": "accessPolicies",
+                            "count": "[length(parameters('objectIds'))]",
+                            "input": {
+                              "objectId": "[parameters('objectIds')[copyIndex('accessPolicies')]]",
+                              "tenantId": "[parameters('tenantId')]",
+                              "permissions": {
+                                "keys": "[parameters('keysPermissions')]",
+                                "secrets": "[parameters('secretsPermissions')]",
+                                "certificates": "[parameters('certificatePermissions')]",
+                                "storage": [
+                                  "all"
+                                ]
+                              }
+                            }
+                          }
+                        ],
+                        "enabledForDeployment": "[parameters('enabledForDeployment')]",
+                        "enabledForTemplateDeployment": "[parameters('enabledForTemplateDeployment')]",
+                        "enabledForDiskEncryption": "[parameters('enabledForDiskEncryption')]",
+                        "tenantId": "[parameters('tenantId')]",
+                        "sku": {
+                          "name": "[parameters('skuName')]",
+                          "family": "A"
+                        },
+                        "networkAcls": {
+                          "defaultAction": "Allow",
+                          "bypass": "AzureServices"
+                        }
+                      },
+                      "tags": "[parameters('tags')]"
+                    },
+                    {
+                      "copy": {
+                        "name": "secrets",
+                        "count": "[length(parameters('secretsObject').secrets)]"
+                      },
+                      "type": "Microsoft.KeyVault/vaults/secrets",
+                      "apiVersion": "2023-07-01",
+                      "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('secretsObject').secrets[copyIndex()].secretName)]",
+                      "properties": {
+                        "value": "[parameters('secretsObject').secrets[copyIndex()].secretValue]",
+                        "contentType": "[coalesce(tryGet(parameters('secretsObject').secrets[copyIndex()], 'contentType'), 'String')]"
+                      },
+                      "dependsOn": [
+                        "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+                      ]
+                    }
+                  ],
+                  "outputs": {
+                    "location": {
+                      "type": "string",
+                      "value": "[parameters('location')]"
+                    },
+                    "name": {
+                      "type": "string",
+                      "value": "[parameters('keyVaultName')]"
+                    },
+                    "resourceGroupName": {
+                      "type": "string",
+                      "value": "[resourceGroup().name]"
+                    },
+                    "subscriptionId": {
+                      "type": "string",
+                      "value": "[subscription().subscriptionId]"
+                    },
+                    "resourceId": {
+                      "type": "string",
+                      "value": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]"
+                    },
+                    "keyVault": {
+                      "type": "object",
+                      "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), '2023-07-01', 'full')]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName'))]"
+              ]
+            },
+            {
+              "condition": "[and(parameters('deployCredentials'), not(empty(variables('snowCredentialsParsed'))))]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "[format('KeyVaultSecrets-{0}-{1}', parameters('devopsEnvironmentName'), parameters('deploymentKey'))]",
+              "subscriptionId": "[parameters('keyVaultSubscription')]",
+              "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "keyVaultName": {
+                    "value": "[parameters('keyVaultName')]"
+                  },
+                  "snowConnectionSecretName": {
+                    "value": "[format('snow-connection-{0}-json', toLower(parameters('devopsEnvironmentName')))]"
+                  },
+                  "instance": {
+                    "value": "[parameters('snowHost')]"
+                  },
+                  "credential": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'Credential'), createObject())]"
+                  },
+                  "clientID": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'ClientID'), '')]"
+                  },
+                  "clientSecret": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'ClientSecret'), '')]"
+                  },
+                  "accessToken": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'AccessToken'), '')]"
+                  },
+                  "refreshToken": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'RefreshToken'), '')]"
+                  },
+                  "expires": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'Expires'), '')]"
+                  },
+                  "proxyURI": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'ProxyURI'), '')]"
+                  },
+                  "proxyCredential": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'ProxyCredential'), createObject())]"
+                  },
+                  "handleRatelimiting": {
+                    "value": "[coalesce(tryGet(variables('snowCredentialsParsed'), 'HandleRatelimiting'), false())]"
+                  },
+                  "webCallTimeoutSeconds": {
+                    "value": "[tryGet(variables('snowCredentialsParsed'), 'WebCallTimeoutSeconds')]"
+                  },
+                  "bypassDefaultProxy": {
+                    "value": "[tryGet(variables('snowCredentialsParsed'), 'BypassDefaultProxy')]"
+                  },
+                  "useWebSession": {
+                    "value": "[tryGet(variables('snowCredentialsParsed'), 'UseWebSession')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "17428878519050596563"
+                    }
+                  },
+                  "parameters": {
+                    "instance": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "ServiceNow Instance name (e.g., dev123456)"
+                      }
+                    },
+                    "snowConnectionSecretName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Name of the secret to store the full connection JSON object"
+                      }
+                    },
+                    "keyVaultName": {
+                      "type": "string",
+                      "maxLength": 24,
+                      "metadata": {
+                        "description": "Key Vault Name"
+                      }
+                    },
+                    "keyVaultResourceGroup": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().name]",
+                      "metadata": {
+                        "description": "Key Vault Resource Group"
+                      }
+                    },
+                    "keyVaultSubscription": {
+                      "type": "string",
+                      "defaultValue": "[subscription().subscriptionId]",
+                      "metadata": {
+                        "description": "Key Vault Subscription"
+                      }
+                    },
+                    "credential": {
+                      "type": "secureObject",
+                      "defaultValue": {},
+                      "metadata": {
+                        "description": "ServiceNow Basic Authentication Credentials"
+                      }
+                    },
+                    "clientID": {
+                      "type": "string",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "ServiceNow OAuth Client ID"
+                      }
+                    },
+                    "clientSecret": {
+                      "type": "securestring",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "ServiceNow OAuth Client Secret"
+                      }
+                    },
+                    "accessToken": {
+                      "type": "securestring",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "ServiceNow OAuth Access Token"
+                      }
+                    },
+                    "refreshToken": {
+                      "type": "securestring",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "ServiceNow OAuth Refresh Token"
+                      }
+                    },
+                    "expires": {
+                      "type": "string",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "OAuth Token Expiration Date/Time (ISO 8601 format)"
+                      }
+                    },
+                    "proxyURI": {
+                      "type": "string",
+                      "defaultValue": "",
+                      "metadata": {
+                        "description": "Proxy URI for ServiceNow connections"
+                      }
+                    },
+                    "proxyCredential": {
+                      "type": "secureObject",
+                      "defaultValue": {},
+                      "metadata": {
+                        "description": "Proxy Authentication Credentials"
+                      }
+                    },
+                    "handleRatelimiting": {
+                      "type": "bool",
+                      "defaultValue": false,
+                      "metadata": {
+                        "description": "Handle rate limiting by waiting for limits to refresh"
+                      }
+                    },
+                    "webCallTimeoutSeconds": {
+                      "type": "int",
+                      "nullable": true,
+                      "metadata": {
+                        "description": "Web call timeout in seconds"
+                      }
+                    },
+                    "bypassDefaultProxy": {
+                      "type": "bool",
+                      "nullable": true,
+                      "metadata": {
+                        "description": "Bypass default proxy settings"
+                      }
+                    },
+                    "useWebSession": {
+                      "type": "bool",
+                      "nullable": true,
+                      "metadata": {
+                        "description": "Use web session for cookie and token storage"
+                      }
+                    }
+                  },
+                  "variables": {
+                    "hasCredential": "[and(and(not(empty(parameters('credential'))), contains(parameters('credential'), 'UserName')), contains(parameters('credential'), 'Password'))]",
+                    "hasOAuthToken": "[and(not(empty(parameters('accessToken'))), not(empty(parameters('refreshToken'))))]",
+                    "hasOAuthClient": "[and(not(empty(parameters('clientID'))), not(empty(parameters('clientSecret'))))]",
+                    "authenticationMethod": "[if(variables('hasOAuthToken'), 'OAuthToken', if(variables('hasOAuthClient'), 'OAuth', if(variables('hasCredential'), 'Basic', 'Basic')))]",
+                    "snowInstance": "[toLower(replace(replace(parameters('instance'), 'https://', ''), 'http://', ''))]"
+                  },
+                  "resources": {
+                    "keyVaultSecrets": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('snowCredentials-{0}', variables('snowInstance'))]",
+                      "subscriptionId": "[parameters('keyVaultSubscription')]",
+                      "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "keyVaultName": {
+                            "value": "[parameters('keyVaultName')]"
+                          },
+                          "authenticationMethod": {
+                            "value": "[variables('authenticationMethod')]"
+                          },
+                          "instance": {
+                            "value": "[parameters('instance')]"
+                          },
+                          "credential": {
+                            "value": "[parameters('credential')]"
+                          },
+                          "clientID": {
+                            "value": "[parameters('clientID')]"
+                          },
+                          "clientSecret": {
+                            "value": "[parameters('clientSecret')]"
+                          },
+                          "accessToken": {
+                            "value": "[parameters('accessToken')]"
+                          },
+                          "refreshToken": {
+                            "value": "[parameters('refreshToken')]"
+                          },
+                          "expires": {
+                            "value": "[parameters('expires')]"
+                          },
+                          "proxyURI": {
+                            "value": "[parameters('proxyURI')]"
+                          },
+                          "proxyCredential": {
+                            "value": "[parameters('proxyCredential')]"
+                          },
+                          "handleRatelimiting": {
+                            "value": "[parameters('handleRatelimiting')]"
+                          },
+                          "webCallTimeoutSeconds": {
+                            "value": "[parameters('webCallTimeoutSeconds')]"
+                          },
+                          "bypassDefaultProxy": {
+                            "value": "[parameters('bypassDefaultProxy')]"
+                          },
+                          "useWebSession": {
+                            "value": "[parameters('useWebSession')]"
+                          },
+                          "snowConnectionSecretName": {
+                            "value": "[parameters('snowConnectionSecretName')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "languageVersion": "2.0",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15152211293006618435"
+                            }
+                          },
+                          "parameters": {
+                            "keyVaultName": {
+                              "type": "string",
+                              "metadata": {
+                                "description": "Key Vault Name"
+                              }
+                            },
+                            "authenticationMethod": {
+                              "type": "string",
+                              "allowedValues": [
+                                "Basic",
+                                "OAuth",
+                                "OAuthToken"
+                              ],
+                              "metadata": {
+                                "description": "Authentication method to use for ServiceNow"
+                              }
+                            },
+                            "instance": {
+                              "type": "string",
+                              "metadata": {
+                                "description": "ServiceNow Instance name (e.g., dev123456)"
+                              }
+                            },
+                            "credential": {
+                              "type": "secureObject",
+                              "defaultValue": {},
+                              "metadata": {
+                                "description": "ServiceNow Basic Authentication Credentials"
+                              }
+                            },
+                            "clientID": {
+                              "type": "string",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "ServiceNow OAuth Client ID"
+                              }
+                            },
+                            "clientSecret": {
+                              "type": "securestring",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "ServiceNow OAuth Client Secret"
+                              }
+                            },
+                            "accessToken": {
+                              "type": "securestring",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "ServiceNow OAuth Access Token"
+                              }
+                            },
+                            "refreshToken": {
+                              "type": "securestring",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "ServiceNow OAuth Refresh Token"
+                              }
+                            },
+                            "expires": {
+                              "type": "string",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "OAuth Token Expiration Date/Time (ISO 8601 format)"
+                              }
+                            },
+                            "proxyURI": {
+                              "type": "string",
+                              "defaultValue": "",
+                              "metadata": {
+                                "description": "Proxy URI for ServiceNow connections"
+                              }
+                            },
+                            "proxyCredential": {
+                              "type": "secureObject",
+                              "defaultValue": {},
+                              "metadata": {
+                                "description": "Proxy Authentication Credentials"
+                              }
+                            },
+                            "handleRatelimiting": {
+                              "type": "bool",
+                              "metadata": {
+                                "description": "Handle rate limiting by waiting for limits to refresh"
+                              }
+                            },
+                            "webCallTimeoutSeconds": {
+                              "type": "int",
+                              "nullable": true,
+                              "metadata": {
+                                "description": "Web call timeout in seconds"
+                              }
+                            },
+                            "bypassDefaultProxy": {
+                              "type": "bool",
+                              "nullable": true,
+                              "metadata": {
+                                "description": "Bypass default proxy settings"
+                              }
+                            },
+                            "useWebSession": {
+                              "type": "bool",
+                              "nullable": true,
+                              "metadata": {
+                                "description": "Use web session for cookie and token storage"
+                              }
+                            },
+                            "snowConnectionSecretName": {
+                              "type": "string",
+                              "metadata": {
+                                "description": "Name of the secret to store the full connection JSON object"
+                              }
+                            }
+                          },
+                          "variables": {
+                            "connectionObject": "[shallowMerge(createArray(createObject('Instance', parameters('instance')), if(not(equals(parameters('handleRatelimiting'), null())), createObject('HandleRatelimiting', parameters('handleRatelimiting')), createObject()), if(not(equals(parameters('webCallTimeoutSeconds'), null())), createObject('WebCallTimeoutSeconds', parameters('webCallTimeoutSeconds')), createObject()), if(not(equals(parameters('bypassDefaultProxy'), null())), createObject('BypassDefaultProxy', parameters('bypassDefaultProxy')), createObject()), if(not(equals(parameters('useWebSession'), null())), createObject('UseWebSession', parameters('useWebSession')), createObject()), if(not(empty(parameters('proxyURI'))), createObject('ProxyURI', parameters('proxyURI')), createObject()), if(and(and(not(empty(parameters('proxyCredential'))), contains(parameters('proxyCredential'), 'UserName')), contains(parameters('proxyCredential'), 'Password')), createObject('ProxyCredential', parameters('proxyCredential')), createObject()), if(and(and(and(equals(parameters('authenticationMethod'), 'Basic'), not(empty(parameters('credential')))), contains(parameters('credential'), 'UserName')), contains(parameters('credential'), 'Password')), createObject('Credential', parameters('credential')), createObject()), if(equals(parameters('authenticationMethod'), 'OAuth'), shallowMerge(createArray(createObject('ClientID', parameters('clientID')), if(not(empty(parameters('clientSecret'))), createObject('ClientSecret', parameters('clientSecret')), createObject()), if(and(and(not(empty(parameters('credential'))), contains(parameters('credential'), 'UserName')), contains(parameters('credential'), 'Password')), createObject('Credential', parameters('credential')), createObject()))), createObject()), if(equals(parameters('authenticationMethod'), 'OAuthToken'), shallowMerge(createArray(createObject('ClientID', parameters('clientID')), if(not(empty(parameters('clientSecret'))), createObject('ClientSecret', parameters('clientSecret')), createObject()), if(not(empty(parameters('accessToken'))), createObject('AccessToken', parameters('accessToken')), createObject()), if(not(empty(parameters('refreshToken'))), createObject('RefreshToken', parameters('refreshToken')), createObject()), if(not(empty(parameters('expires'))), createObject('Expires', parameters('expires')), createObject()))), createObject())))]"
+                          },
+                          "resources": {
+                            "keyVault": {
+                              "existing": true,
+                              "type": "Microsoft.KeyVault/vaults",
+                              "apiVersion": "2023-07-01",
+                              "name": "[parameters('keyVaultName')]"
+                            },
+                            "snowConnectionSecret": {
+                              "type": "Microsoft.KeyVault/vaults/secrets",
+                              "apiVersion": "2023-07-01",
+                              "name": "[format('{0}/{1}', parameters('keyVaultName'), parameters('snowConnectionSecretName'))]",
+                              "properties": {
+                                "value": "[string(variables('connectionObject'))]",
+                                "contentType": "application/json",
+                                "attributes": {
+                                  "enabled": true
+                                }
+                              }
+                            }
+                          },
+                          "outputs": {
+                            "secretsCreated": {
+                              "type": "object",
+                              "value": {
+                                "connectionSecret": "[parameters('snowConnectionSecretName')]",
+                                "authenticationMethod": "[parameters('authenticationMethod')]"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "keyVaultName": {
+                      "type": "string",
+                      "value": "[parameters('keyVaultName')]"
+                    },
+                    "authenticationMethod": {
+                      "type": "string",
+                      "value": "[variables('authenticationMethod')]"
+                    },
+                    "secretNames": {
+                      "type": "object",
+                      "value": {
+                        "connectionSecret": "[parameters('snowConnectionSecretName')]"
+                      }
+                    },
+                    "secretsCreated": {
+                      "type": "object",
+                      "value": "[reference('keyVaultSecrets').outputs.secretsCreated.value]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', parameters('keyVaultName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('midServerIdentityName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'config')]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "DevopsVaultAccessPolicies",
+              "subscriptionId": "[parameters('keyVaultSubscription')]",
+              "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]"
+                  },
+                  "keyVaultName": {
+                    "value": "[parameters('keyVaultName')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "1721066507830064952"
+                    }
+                  },
+                  "parameters": {
+                    "keyVaultName": {
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "object",
+                      "defaultValue": {
+                        "secrets": [
+                          "all"
+                        ]
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.KeyVault/vaults/accessPolicies",
+                      "apiVersion": "2019-09-01",
+                      "name": "[format('{0}/{1}', parameters('keyVaultName'), 'add')]",
+                      "properties": {
+                        "accessPolicies": [
+                          {
+                            "objectId": "[parameters('principalId')]",
+                            "tenantId": "[subscription().tenantId]",
+                            "permissions": "[parameters('permissions')]"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', parameters('keyVaultName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "containerRegistry",
+              "subscriptionId": "[parameters('containerRegistrySubscription')]",
+              "resourceGroup": "[parameters('containerRegistryResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "registryName": {
+                    "value": "[parameters('containerRegistryName')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "9922659256615230014"
+                    }
+                  },
+                  "parameters": {
+                    "registryName": {
+                      "type": "string"
+                    },
+                    "location": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().location]"
+                    },
+                    "sku": {
+                      "type": "string",
+                      "defaultValue": "Basic",
+                      "allowedValues": [
+                        "Basic",
+                        "Standard",
+                        "Premium"
+                      ]
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": {}
+                    },
+                    "identity": {
+                      "type": "object",
+                      "defaultValue": {
+                        "type": "SystemAssigned"
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.ContainerRegistry/registries",
+                      "apiVersion": "2023-07-01",
+                      "name": "[parameters('registryName')]",
+                      "identity": "[parameters('identity')]",
+                      "location": "[parameters('location')]",
+                      "properties": {
+                        "adminUserEnabled": true
+                      },
+                      "sku": {
+                        "name": "[parameters('sku')]"
+                      },
+                      "tags": "[parameters('tags')]"
+                    }
+                  ],
+                  "outputs": {
+                    "containerRegistry": {
+                      "type": "object",
+                      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName')), '2023-07-01', 'full')]"
+                    },
+                    "loginServer": {
+                      "type": "string",
+                      "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('registryName')), '2023-07-01').loginServer]"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "condition": "[parameters('deployPermissions')]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "[format('AssignPermissions-{0}', parameters('devopsEnvironmentName'))]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "devopsEnvironmentName": {
+                    "value": "[parameters('devopsEnvironmentName')]"
+                  },
+                  "containerRegistrySubscription": {
+                    "value": "[parameters('containerRegistrySubscription')]"
+                  },
+                  "containerRegistryResourceGroup": {
+                    "value": "[parameters('containerRegistryResourceGroup')]"
+                  },
+                  "containerRegistryName": {
+                    "value": "[parameters('containerRegistryName')]"
+                  },
+                  "keyVaultSubscription": {
+                    "value": "[parameters('keyVaultSubscription')]"
+                  },
+                  "keyVaultResourceGroup": {
+                    "value": "[parameters('keyVaultResourceGroup')]"
+                  },
+                  "keyVaultName": {
+                    "value": "[parameters('keyVaultName')]"
+                  },
+                  "containerSubnetId": {
+                    "value": "[parameters('containerSubnetId')]"
+                  },
+                  "virtualNetworkRoleId": {
+                    "value": "[parameters('virtualNetworkRoleId')]"
+                  },
+                  "adminEntraEntities": {
+                    "value": "[parameters('adminEntraEntities')]"
+                  },
+                  "additionalResourceGroupRoleAssignments": {
+                    "value": "[parameters('additionalResourceGroupRoleAssignments')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "17803996700916829172"
+                    }
+                  },
+                  "functions": [
+                    {
+                      "namespace": "__bicep",
+                      "members": {
+                        "parseResourceId": {
+                          "parameters": [
+                            {
+                              "type": "string",
+                              "name": "resourceId"
+                            }
+                          ],
+                          "output": {
+                            "type": "object",
+                            "value": {
+                              "SubscriptionId": "[split(parameters('resourceId'), '/')[2]]",
+                              "ResourceGroup": "[split(parameters('resourceId'), '/')[4]]",
+                              "Name": "[last(split(parameters('resourceId'), '/'))]"
+                            }
+                          },
+                          "metadata": {
+                            "description": "Parse a resource ID into its components",
+                            "__bicep_imported_from!": {
+                              "sourceTemplate": "modules/common-functions.bicep"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "parameters": {
+                    "devopsEnvironmentName": {
+                      "type": "string",
+                      "defaultValue": "dev",
+                      "maxLength": 5,
+                      "metadata": {
+                        "description": "The name of the environment. This will be used to tag, and identify resources."
+                      }
+                    },
+                    "containerSubnetId": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Subnet ID for the container. Must have access to ServiceNow instance, ACR, and ARM Services at a minimum."
+                      }
+                    },
+                    "virtualNetworkRoleId": {
+                      "type": "string",
+                      "defaultValue": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c",
+                      "metadata": {
+                        "description": "The ID of the virtual network role. This is used to assign the role to the subnet. Default is Contributor on the virtual network."
+                      }
+                    },
+                    "keyVaultName": {
+                      "type": "string",
+                      "defaultValue": "[format('snkv-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+                      "maxLength": 24,
+                      "metadata": {
+                        "description": "Key Vault Name"
+                      }
+                    },
+                    "keyVaultResourceGroup": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().name]",
+                      "metadata": {
+                        "description": "Key Vault Resource Group"
+                      }
+                    },
+                    "keyVaultSubscription": {
+                      "type": "string",
+                      "defaultValue": "[subscription().subscriptionId]",
+                      "metadata": {
+                        "description": "Key Vault Subscription"
+                      }
+                    },
+                    "containerRegistrySubscription": {
+                      "type": "string",
+                      "defaultValue": "[subscription().subscriptionId]",
+                      "metadata": {
+                        "description": "ACR Subscription"
+                      }
+                    },
+                    "containerRegistryResourceGroup": {
+                      "type": "string",
+                      "defaultValue": "[resourceGroup().name]",
+                      "metadata": {
+                        "description": "ACR Resource Group"
+                      }
+                    },
+                    "containerRegistryName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "ACR Registry Name"
+                      }
+                    },
+                    "adminEntraEntities": {
+                      "type": "array",
+                      "defaultValue": [],
+                      "metadata": {
+                        "description": "The Entra ID (Azure AD) objects with principalId and principalType to be added to the Key Vault access policy, and admin role assignments."
+                      }
+                    },
+                    "additionalResourceGroupRoleAssignments": {
+                      "type": "array",
+                      "defaultValue": [],
+                      "metadata": {
+                        "description": "Additional Resource Group Role Assignments"
+                      }
+                    }
+                  },
+                  "variables": {
+                    "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+                    "userAssignedIdentityName": "[format('snow-devops-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+                    "midServerIdentityName": "[format('snow-midserver-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+                    "subnetParts": "[if(not(equals(parameters('containerSubnetId'), '')), __bicep.parseResourceId(parameters('containerSubnetId')), createObject('ResourceGroup', resourceGroup().name, 'SubscriptionId', subscription().subscriptionId))]"
+                  },
+                  "resources": {
+                    "userAssignedIdentity": {
+                      "existing": true,
+                      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+                      "apiVersion": "2023-01-31",
+                      "name": "[variables('userAssignedIdentityName')]"
+                    },
+                    "midServerIdentity": {
+                      "existing": true,
+                      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+                      "apiVersion": "2023-01-31",
+                      "name": "[variables('midServerIdentityName')]"
+                    },
+                    "storageAccount": {
+                      "existing": true,
+                      "type": "Microsoft.Storage/storageAccounts",
+                      "apiVersion": "2023-01-01",
+                      "name": "[variables('storageAccountName')]"
+                    },
+                    "storageAccountTableServices": {
+                      "type": "Microsoft.Storage/storageAccounts/tableServices",
+                      "apiVersion": "2024-01-01",
+                      "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]"
+                    },
+                    "storageAccountMidServersTable": {
+                      "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
+                      "dependsOn": [
+                        "storageAccountTableServices"
+                      ]
+                    },
+                    "storageAccountConfigTable": {
+                      "type": "Microsoft.Storage/storageAccounts/tableServices/tables",
+                      "apiVersion": "2023-05-01",
+                      "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', 'config')]",
+                      "dependsOn": [
+                        "storageAccountTableServices"
+                      ]
+                    },
+                    "storageFileDataPrivilegedContributor": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "scope": "/",
+                      "name": "69566ab7-960f-475b-8e7c-b3118f30c6bd"
+                    },
+                    "storageTableDataContributor": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "scope": "/",
+                      "name": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3"
+                    },
+                    "keyVaultAdministratorRoleDefinition": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2018-01-01-preview",
+                      "subscriptionId": "[subscription().subscriptionId]",
+                      "name": "00482a5a-887f-4fb3-b363-3b7fe8e74483",
+                      "metadata": {
+                        "description": "This is the built-in Key Vault Administrator role. See https://docs.microsoft.com/azure/role-based-access-control/built-in-roles#key-vault-administrator"
+                      }
+                    },
+                    "keyvaultReaderRoleDefinition": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "subscriptionId": "[subscription().subscriptionId]",
+                      "name": "4633458b-17de-408a-b874-0445c86b69e6"
+                    },
+                    "contributorRoleDefinition": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "subscriptionId": "[subscription().subscriptionId]",
+                      "name": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+                    },
+                    "readerRoleDefinition": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "subscriptionId": "[subscription().subscriptionId]",
+                      "name": "acdd72a7-3385-48ef-bd42-f606fba81ae7"
+                    },
+                    "acrPullRoleDefinition": {
+                      "existing": true,
+                      "type": "Microsoft.Authorization/roleDefinitions",
+                      "apiVersion": "2022-04-01",
+                      "subscriptionId": "[subscription().subscriptionId]",
+                      "name": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+                    },
+                    "keyVault": {
+                      "existing": true,
+                      "type": "Microsoft.KeyVault/vaults",
+                      "apiVersion": "2024-12-01-preview",
+                      "subscriptionId": "[parameters('keyVaultSubscription')]",
+                      "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+                      "name": "[parameters('keyVaultName')]"
+                    },
+                    "roleAssignmentNetworkDevOps": {
+                      "condition": "[not(equals(parameters('containerSubnetId'), ''))]",
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentNetworkDevops",
+                      "resourceGroup": "[variables('subnetParts').ResourceGroup]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "subnetId": {
+                            "value": "[parameters('containerSubnetId')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[parameters('virtualNetworkRoleId')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15300375483265345610"
+                            }
+                          },
+                          "parameters": {
+                            "subnetId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "variables": {
+                            "subnetParts": "[split(parameters('subnetId'), '/')]",
+                            "virtualNetworkName": "[variables('subnetParts')[8]]"
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Network/virtualNetworks/{0}', variables('virtualNetworkName'))]",
+                              "name": "[guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName')), 'Microsoft.Authorization/roleAssignments', guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))), '2022-04-01', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "roleAssignmentNetworkDevOpsReader": {
+                      "condition": "[not(equals(parameters('containerSubnetId'), ''))]",
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentNetworkDevopsReader",
+                      "resourceGroup": "[variables('subnetParts').ResourceGroup]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "roleAssignmentNetworkMidServer": {
+                      "condition": "[not(equals(parameters('containerSubnetId'), ''))]",
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentNetworkMid",
+                      "resourceGroup": "[variables('subnetParts').ResourceGroup]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "subnetId": {
+                            "value": "[parameters('containerSubnetId')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[parameters('virtualNetworkRoleId')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15300375483265345610"
+                            }
+                          },
+                          "parameters": {
+                            "subnetId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "variables": {
+                            "subnetParts": "[split(parameters('subnetId'), '/')]",
+                            "virtualNetworkName": "[variables('subnetParts')[8]]"
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Network/virtualNetworks/{0}', variables('virtualNetworkName'))]",
+                              "name": "[guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName')), 'Microsoft.Authorization/roleAssignments', guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))), '2022-04-01', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "roleAssignmentStorageFiles": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentStorageFiles",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "storageAccountName": {
+                            "value": "[variables('storageAccountName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[tenantResourceId('Microsoft.Authorization/roleDefinitions', '69566ab7-960f-475b-8e7c-b3118f30c6bd')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "8694597720720286949"
+                            }
+                          },
+                          "parameters": {
+                            "storageAccountName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+                              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "midRoleAssignmentStorageFiles": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "midRoleAssignmentStorageFiles",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "storageAccountName": {
+                            "value": "[variables('storageAccountName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[tenantResourceId('Microsoft.Authorization/roleDefinitions', '69566ab7-960f-475b-8e7c-b3118f30c6bd')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "8694597720720286949"
+                            }
+                          },
+                          "parameters": {
+                            "storageAccountName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+                              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "roleAssignmentStorageTables": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentStorageTables",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "storageAccountName": {
+                            "value": "[variables('storageAccountName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[tenantResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "8694597720720286949"
+                            }
+                          },
+                          "parameters": {
+                            "storageAccountName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+                              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "midRoleAssignmentStorageTables": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "midRoleAssignmentStorageTables",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "storageAccountName": {
+                            "value": "[variables('storageAccountName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[tenantResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "8694597720720286949"
+                            }
+                          },
+                          "parameters": {
+                            "storageAccountName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('storageAccountName'))]",
+                              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "roleAssignmentResourceGroup": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentResourceGroup",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "roleAssignmentResourceGroupMidServer": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentResourceGroupMidServer",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "roleAssignmentKeyVault": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentKeyVault",
+                      "subscriptionId": "[parameters('keyVaultSubscription')]",
+                      "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "keyVaultName": {
+                            "value": "[parameters('keyVaultName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '00482a5a-887f-4fb3-b363-3b7fe8e74483')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "6248234611467275936"
+                            }
+                          },
+                          "parameters": {
+                            "keyVaultName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+                              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "roleAssignmentKeyVaultReaderMid": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "roleAssignmentKeyVaultReaderMid",
+                      "subscriptionId": "[parameters('keyVaultSubscription')]",
+                      "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "keyVaultName": {
+                            "value": "[parameters('keyVaultName')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "6248234611467275936"
+                            }
+                          },
+                          "parameters": {
+                            "keyVaultName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.KeyVault/vaults/{0}', parameters('keyVaultName'))]",
+                              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('roleDefinitionId'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[parameters('roleDefinitionId')]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('roleDefinitionId'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "acrDevopsContributor": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "acrDevopsContributor",
+                      "subscriptionId": "[parameters('containerRegistrySubscription')]",
+                      "resourceGroup": "[parameters('containerRegistryResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "containerRegistryName": {
+                            "value": "[parameters('containerRegistryName')]"
+                          },
+                          "roleDefinitionName": {
+                            "value": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+                          },
+                          "principalId": {
+                            "value": "[reference('userAssignedIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15652130850992073838"
+                            }
+                          },
+                          "parameters": {
+                            "containerRegistryName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', parameters('containerRegistryName'))]",
+                              "name": "[guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionName'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), 'Microsoft.Authorization/roleAssignments', guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "userAssignedIdentity"
+                      ]
+                    },
+                    "acrMidServerContributor": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "acrMidServerContributor",
+                      "subscriptionId": "[parameters('containerRegistrySubscription')]",
+                      "resourceGroup": "[parameters('containerRegistryResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "containerRegistryName": {
+                            "value": "[parameters('containerRegistryName')]"
+                          },
+                          "roleDefinitionName": {
+                            "value": "b24988ac-6180-42a0-ab88-20f7382dd24c"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15652130850992073838"
+                            }
+                          },
+                          "parameters": {
+                            "containerRegistryName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', parameters('containerRegistryName'))]",
+                              "name": "[guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionName'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), 'Microsoft.Authorization/roleAssignments', guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "acrMidServerAcrPull": {
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "acrMidServerAcrPull",
+                      "subscriptionId": "[parameters('containerRegistrySubscription')]",
+                      "resourceGroup": "[parameters('containerRegistryResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "containerRegistryName": {
+                            "value": "[parameters('containerRegistryName')]"
+                          },
+                          "roleDefinitionName": {
+                            "value": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+                          },
+                          "principalId": {
+                            "value": "[reference('midServerIdentity').principalId]"
+                          },
+                          "principalType": {
+                            "value": "ServicePrincipal"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15652130850992073838"
+                            }
+                          },
+                          "parameters": {
+                            "containerRegistryName": {
+                              "type": "string"
+                            },
+                            "roleDefinitionName": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "scope": "[format('Microsoft.ContainerRegistry/registries/{0}', parameters('containerRegistryName'))]",
+                              "name": "[guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionName'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('containerRegistryName')), 'Microsoft.Authorization/roleAssignments', guid(parameters('containerRegistryName'), parameters('roleDefinitionName'), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      },
+                      "dependsOn": [
+                        "midServerIdentity"
+                      ]
+                    },
+                    "resourceGroupContributors": {
+                      "copy": {
+                        "name": "resourceGroupContributors",
+                        "count": "[length(parameters('adminEntraEntities'))]"
+                      },
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('roleAssignment-{0}', uniqueString(parameters('devopsEnvironmentName'), parameters('adminEntraEntities')[copyIndex()].principalId))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+                          },
+                          "principalId": {
+                            "value": "[parameters('adminEntraEntities')[copyIndex()].principalId]"
+                          },
+                          "principalType": {
+                            "value": "[coalesce(parameters('adminEntraEntities')[copyIndex()].principalType, 'ServicePrincipal')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "acrContributors": {
+                      "copy": {
+                        "name": "acrContributors",
+                        "count": "[length(parameters('adminEntraEntities'))]"
+                      },
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('acrRoleAssignment-{0}', uniqueString(parameters('devopsEnvironmentName'), parameters('adminEntraEntities')[copyIndex()].principalId))]",
+                      "subscriptionId": "[parameters('containerRegistrySubscription')]",
+                      "resourceGroup": "[parameters('containerRegistryResourceGroup')]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]"
+                          },
+                          "principalId": {
+                            "value": "[parameters('adminEntraEntities')[copyIndex()].principalId]"
+                          },
+                          "principalType": {
+                            "value": "[coalesce(parameters('adminEntraEntities')[copyIndex()].principalType, 'ServicePrincipal')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "networkAdditionalAssignments": {
+                      "copy": {
+                        "name": "networkAdditionalAssignments",
+                        "count": "[length(parameters('adminEntraEntities'))]"
+                      },
+                      "condition": "[not(equals(parameters('containerSubnetId'), ''))]",
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('networkRoleAssignment-{0}', uniqueString(parameters('devopsEnvironmentName'), parameters('adminEntraEntities')[copyIndex()].principalId))]",
+                      "resourceGroup": "[variables('subnetParts').ResourceGroup]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "subnetId": {
+                            "value": "[parameters('containerSubnetId')]"
+                          },
+                          "roleDefinitionId": {
+                            "value": "[parameters('virtualNetworkRoleId')]"
+                          },
+                          "principalId": {
+                            "value": "[parameters('adminEntraEntities')[copyIndex()].principalId]"
+                          },
+                          "principalType": {
+                            "value": "[coalesce(parameters('adminEntraEntities')[copyIndex()].principalType, 'ServicePrincipal')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "15300375483265345610"
+                            }
+                          },
+                          "parameters": {
+                            "subnetId": {
+                              "type": "string"
+                            },
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "variables": {
+                            "subnetParts": "[split(parameters('subnetId'), '/')]",
+                            "virtualNetworkName": "[variables('subnetParts')[8]]"
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2022-04-01",
+                              "scope": "[format('Microsoft.Network/virtualNetworks/{0}', variables('virtualNetworkName'))]",
+                              "name": "[guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId'))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(extensionResourceId(resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName')), 'Microsoft.Authorization/roleAssignments', guid(variables('virtualNetworkName'), subscriptionResourceId('Microsoft.Authorization/roleDefinitions', parameters('roleDefinitionId')), parameters('principalId'))), '2022-04-01', 'full')]"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "additionalRoleAssignments": {
+                      "copy": {
+                        "name": "additionalRoleAssignments",
+                        "count": "[length(parameters('additionalResourceGroupRoleAssignments'))]"
+                      },
+                      "type": "Microsoft.Resources/deployments",
+                      "apiVersion": "2022-09-01",
+                      "name": "[format('roleAssignment-{0}', uniqueString(parameters('devopsEnvironmentName'), parameters('additionalResourceGroupRoleAssignments')[copyIndex()].roleDefinitionId, parameters('additionalResourceGroupRoleAssignments')[copyIndex()].principalId))]",
+                      "properties": {
+                        "expressionEvaluationOptions": {
+                          "scope": "inner"
+                        },
+                        "mode": "Incremental",
+                        "parameters": {
+                          "roleDefinitionId": {
+                            "value": "[parameters('additionalResourceGroupRoleAssignments')[copyIndex()].roleDefinitionId]"
+                          },
+                          "principalId": {
+                            "value": "[parameters('additionalResourceGroupRoleAssignments')[copyIndex()].principalId]"
+                          },
+                          "principalType": {
+                            "value": "[coalesce(parameters('additionalResourceGroupRoleAssignments')[copyIndex()].principalType, 'ServicePrincipal')]"
+                          }
+                        },
+                        "template": {
+                          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                          "contentVersion": "1.0.0.0",
+                          "metadata": {
+                            "_generator": {
+                              "name": "bicep",
+                              "version": "0.37.4.10188",
+                              "templateHash": "13039565285372748128"
+                            }
+                          },
+                          "parameters": {
+                            "roleDefinitionId": {
+                              "type": "string"
+                            },
+                            "principalId": {
+                              "type": "string"
+                            },
+                            "principalType": {
+                              "type": "string",
+                              "defaultValue": "ServicePrincipal"
+                            }
+                          },
+                          "resources": [
+                            {
+                              "type": "Microsoft.Authorization/roleAssignments",
+                              "apiVersion": "2020-10-01-preview",
+                              "name": "[guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))]",
+                              "properties": {
+                                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', last(split(parameters('roleDefinitionId'), '/')))]",
+                                "principalId": "[parameters('principalId')]",
+                                "principalType": "[parameters('principalType')]"
+                              }
+                            }
+                          ],
+                          "outputs": {
+                            "roleAssignment": {
+                              "type": "object",
+                              "value": "[reference(resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, last(split(parameters('roleDefinitionId'), '/')), parameters('principalId'))), '2020-10-01-preview', 'full')]"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "resourceGroupId": {
+                      "type": "string",
+                      "value": "[resourceGroup().id]"
+                    },
+                    "userAssignedIdentity": {
+                      "type": "object",
+                      "value": "[reference('userAssignedIdentity', '2023-01-31', 'full')]"
+                    },
+                    "midServerIdentity": {
+                      "type": "object",
+                      "value": "[reference('midServerIdentity', '2023-01-31', 'full')]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', parameters('keyVaultName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('midServerIdentityName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'config')]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('runValidationScript')]",
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "[format('ValidateEnvironment-{0}', parameters('devopsEnvironmentName'))]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "deploymentScriptName": {
+                    "value": "[format('ValidateEnvironment-{0}', parameters('devopsEnvironmentName'))]"
+                  },
+                  "devopsEnvironmentName": {
+                    "value": "[parameters('devopsEnvironmentName')]"
+                  },
+                  "userAssignedIdentityName": {
+                    "value": "[variables('userAssignedIdentityName')]"
+                  },
+                  "inlineScript": {
+                    "value": "      Resolve-SNOWMIDPrereqs\r\n      $ctx = Resolve-SNOWMIDBuildContext\r\n      $SnowConn = Resolve-SNOWMIDEnvironmentAuth\r\n      foreach($key in $Ctx.Keys) {\r\n        $DeploymentScriptOutputs[$key] = $Ctx[$key]\r\n      }\r\n      $ImageState = Resolve-SNOWMIDImageState\r\n      foreach($key in $ImageState.Keys) {\r\n        $DeploymentScriptOutputs[$key] = $ImageState[$key]\r\n      }\r\n    "
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "languageVersion": "2.0",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "4720830873895395780"
+                    }
+                  },
+                  "parameters": {
+                    "devopsEnvironmentName": {
+                      "type": "string",
+                      "defaultValue": "unts",
+                      "maxLength": 5,
+                      "metadata": {
+                        "description": "The name of the environment. This will be used to tag, and identify resources."
+                      }
+                    },
+                    "deploymentScriptName": {
+                      "type": "string",
+                      "defaultValue": "[format('SnowMidTools-{0}', parameters('devopsEnvironmentName'))]"
+                    },
+                    "userAssignedIdentityName": {
+                      "type": "string"
+                    },
+                    "midToolsRemoteUriBase": {
+                      "type": "string",
+                      "defaultValue": "https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src"
+                    },
+                    "midToolsRemoteUriSas": {
+                      "type": "securestring",
+                      "defaultValue": ""
+                    },
+                    "supportingScriptUris": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "defaultValue": []
+                    },
+                    "inlineScript": {
+                      "type": "string",
+                      "defaultValue": "Resolve-SNOWMIDPrereqs\r\n$ctx = Resolve-SNOWMIDBuildContext\r\nforeach($key in $Ctx.Keys) {\r\n  $DeploymentScriptOutputs[$key] = $Ctx[$key]\r\n}\r\n$DeploymentScriptOutputs['ctxJson'] = ($ctx | ConvertTo-Json -Depth 10)\r\n"
+                    },
+                    "utcValue": {
+                      "type": "string",
+                      "defaultValue": "[utcNow()]"
+                    },
+                    "scriptEnvironmentVariables": {
+                      "type": "array",
+                      "defaultValue": []
+                    },
+                    "tags": {
+                      "type": "object",
+                      "defaultValue": "[resourceGroup().tags]"
+                    }
+                  },
+                  "variables": {
+                    "copy": [
+                      {
+                        "name": "psToolsSupportFileUris",
+                        "count": "[length(variables('psToolsSupportFiles'))]",
+                        "input": "[format('{0}/{1}?{2}', parameters('midToolsRemoteUriBase'), variables('psToolsSupportFiles')[copyIndex('psToolsSupportFileUris')], parameters('midToolsRemoteUriSas'))]"
+                      }
+                    ],
+                    "psToolsSupportFiles": [
+                      "PSSnow.MidTools.psd1",
+                      "PSSnow.MidTools.psm1",
+                      "PSSnow.MidTools.CertTools.ps1",
+                      "PSSnow.MidTools.Extensions.ps1"
+                    ],
+                    "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+                    "dsEnv": "[union(createArray(createObject('name', 'SN_MID_ENVIRONMENT_NAME', 'value', parameters('devopsEnvironmentName')), createObject('name', 'SN_MID_CONTEXT', 'value', 'azure'), createObject('name', 'SN_MID_BUILD_STRATEGY', 'value', 'acr'), createObject('name', 'NO_COLOR', 'value', 'true')), parameters('scriptEnvironmentVariables'))]"
+                  },
+                  "resources": {
+                    "storageAccount": {
+                      "existing": true,
+                      "type": "Microsoft.Storage/storageAccounts",
+                      "apiVersion": "2023-01-01",
+                      "name": "[variables('storageAccountName')]"
+                    },
+                    "userAssignedIdentity": {
+                      "existing": true,
+                      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+                      "apiVersion": "2023-01-31",
+                      "name": "[parameters('userAssignedIdentityName')]"
+                    },
+                    "manageImageScript": {
+                      "type": "Microsoft.Resources/deploymentScripts",
+                      "apiVersion": "2023-08-01",
+                      "name": "[parameters('deploymentScriptName')]",
+                      "location": "[resourceGroup().location]",
+                      "identity": {
+                        "type": "userAssigned",
+                        "userAssignedIdentities": {
+                          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('userAssignedIdentityName')))]": {}
+                        }
+                      },
+                      "kind": "AzurePowerShell",
+                      "properties": {
+                        "environmentVariables": "[variables('dsEnv')]",
+                        "forceUpdateTag": "[parameters('utcValue')]",
+                        "azPowerShellVersion": "14.3",
+                        "storageAccountSettings": {
+                          "storageAccountName": "[variables('storageAccountName')]"
+                        },
+                        "containerSettings": {
+                          "subnetIds": [
+                            {
+                              "id": "[reference('storageAccount', '2023-01-01', 'full').tags.SnowContainerSubnetId]"
+                            }
+                          ]
+                        },
+                        "scriptContent": "[join(createArray('# GENERATED IN snow-mid-deplyoymentscript.mod.bicep', '# This function is called at the bottom of this script.', 'function SnowMidDeploymentScript {', parameters('inlineScript'), '}', '$DeploymentScriptOutputs.DirContents = Get-ChildItem -Path $PSScriptRoot -Recurse', 'Get-ChildItem -Path $PSScriptRoot -Recurse', 'Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath \"PSSnow.MidTools.psm1\") -Force', 'SnowMidDeploymentScript'), '\n')]",
+                        "retentionInterval": "PT1H",
+                        "cleanupPreference": "OnSuccess",
+                        "supportingScriptUris": "[union(variables('psToolsSupportFileUris'), parameters('supportingScriptUris'))]"
+                      },
+                      "tags": "[parameters('tags')]",
+                      "dependsOn": [
+                        "storageAccount"
+                      ]
+                    }
+                  },
+                  "outputs": {
+                    "scriptOutput": {
+                      "type": "object",
+                      "value": "[reference('manageImageScript').outputs]"
+                    }
+                  }
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('containerRegistrySubscription'), parameters('containerRegistryResourceGroup')), 'Microsoft.Resources/deployments', 'containerRegistry')]",
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', parameters('keyVaultName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'config')]",
+                "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
+                "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', 'DevopsVaultAccessPolicies')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2022-09-01",
+              "name": "appendResourceGroupTags",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "tags": {
+                    "value": {
+                      "SnowEnvironments": "[parameters('devopsEnvironmentName')]"
+                    }
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.37.4.10188",
+                      "templateHash": "11028298029489113171"
+                    }
+                  },
+                  "parameters": {
+                    "tags": {
+                      "type": "object",
+                      "metadata": {
+                        "description": "The tags to append to the resource group"
+                      }
+                    }
+                  },
+                  "variables": {
+                    "existingTags": "[resourceGroup().tags]",
+                    "mergedTags": "[union(variables('existingTags'), parameters('tags'))]"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Resources/tags",
+                      "apiVersion": "2021-01-01",
+                      "name": "default",
+                      "properties": {
+                        "tags": "[variables('mergedTags')]"
+                      }
+                    }
+                  ],
+                  "outputs": {
+                    "mergedTags": {
+                      "type": "object",
+                      "value": "[variables('mergedTags')]"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "resourceGroupId": {
+              "type": "string",
+              "value": "[resourceGroup().id]"
+            },
+            "containerRegistry": {
+              "type": "object",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('containerRegistrySubscription'), parameters('containerRegistryResourceGroup')), 'Microsoft.Resources/deployments', 'containerRegistry'), '2022-09-01').outputs.containerRegistry.value]"
+            },
+            "keyVault": {
+              "type": "object",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', parameters('keyVaultName')), '2022-09-01').outputs.keyVault.value]"
+            },
+            "storageAccount": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full')]"
+            },
+            "userAssignedIdentity": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31', 'full')]"
+            },
+            "midServerIdentity": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('midServerIdentityName')), '2023-01-31', 'full')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "aciNetwork"
+      ]
+    }
+  }
+}

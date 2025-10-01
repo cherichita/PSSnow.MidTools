@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "networkResourceGroupName": {
+      "value": "tod-aci-network-rg"
+    },
+    "deployNetwork": {
+      "value": true
+    },
+    "vnetAddressPrefixes": {
+      "value": ["10.112.0.0/16"]
+    },
+    "subnetAddressPrefix": {
+      "value": "10.112.0.0/24"
+    },
+    "devopsEnvironmentName": {
+      "value": "unts"
+    },
+    "deployPermissions": {
+      "value": true
+    },
+    "location": {
+      "value": "canadacentral"
+    },
+    "runValidationScript": {
+      "value": true
+    },
+    "adminEntraEntities": {
+      "value": [
+        {
+          "principalId": "c102ed76-19ea-45b2-aa32-ca2e316ee1aa",
+          "principalType": "User"
+        },
+        {
+          "principalId": "a55fbcc4-fb8c-46aa-bc8f-b1ae72a2ab6b",
+          "principalType": "User"
+        },
+        {
+          "principalId": "4c7008f7-b971-4178-a091-9f3d99878dcd",
+          "principalType": "ServicePrincipal"
+        }
+      ]
+    },
+    "snowHost": {
+      "value": "https://dev282097.service-now.com"
+    },
+    "containerSubnetId": {
+      "value": ""
+    },
+    "additionalStorageSubnetIds": {
+      "value": []
+    },
+    "virtualNetworkRoleId": {
+      "value": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c"
+    },
+    "containerRegistryResourceGroup": {
+      "value": "tod-aci-workload-rg"
+    },
+    "containerRegistryName": {
+      "value": "todacr91"
+    }
+  }
+}

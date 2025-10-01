@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "applicationName": {
+      "value": "snow-unts"
+    },
+    "federated": {
+      "value": true
+    },
+    "federatedCredentialName": {
+      "value": "AzDevopsTest"
+    },
+    "federatedCredentialIssuer": {
+      "value": "https://login.microsoftonline.com/08936a9c-378a-40dd-8827-799c562b0f2a/v2.0"
+    },
+    "federatedCredentialSubject": {
+      "value": "/eid1/c/pub/t/nGqTCIo33UCIJ3mcVisPKg/a/rISbSSETf0KqFyZ8ppdXmA/sc/530d4cc3-f1ef-4ece-8426-b8ec2821fb50/57bad245-56c3-414f-acb7-7d401301f997"
+    },
+    "federatedCredentialAudiences": {
+      "value": [
+        "api://AzureADTokenExchange"
+      ]
+    },
+    "subnetId": {
+      "value": "/subscriptions/961aa89f-8ca9-4477-aedc-cf389f606483/resourceGroups/tod-aci-network-rg/providers/Microsoft.Network/virtualNetworks/aci-vnet-default/subnets/aci-subnet-default"
+    }
+  }
+}

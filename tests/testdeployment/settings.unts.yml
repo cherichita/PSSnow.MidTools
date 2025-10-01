@@ -1,0 +1,7 @@
+azure:
+  subscription_id: 961aa89f-1234-1234-aedc-cf389f606483
+  subscription_name: ccvvssd-azure
+  tenant_id: 08936a9c-378a-40dd-1234-799c562b0f2a
+  resource_group: tod-aci-workload-rg
+  admin_group_id: ffabcf4e-9af6-4121-b043-c49466e8167a
+  admin_role_id: b24988ac-6180-42a0-ab88-20f7382dd24c # Contributor

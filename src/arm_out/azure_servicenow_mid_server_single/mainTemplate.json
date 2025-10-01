@@ -1,0 +1,645 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "17196832811316417788"
+    }
+  },
+  "parameters": {
+    "devopsEnvironmentName": {
+      "type": "string"
+    },
+    "midServerName": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 16
+    },
+    "midServerCluster": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 16
+    },
+    "numCpu": {
+      "type": "int",
+      "defaultValue": 1,
+      "allowedValues": [
+        1,
+        2,
+        4,
+        8
+      ],
+      "metadata": {
+        "description": "The number of CPU cores to allocate to the MID Server container"
+      }
+    },
+    "memoryInGB": {
+      "type": "int",
+      "defaultValue": 4,
+      "allowedValues": [
+        1,
+        2,
+        4,
+        8,
+        16
+      ],
+      "metadata": {
+        "description": "The amount of memory in GB to allocate to the MID Server container"
+      }
+    },
+    "useCertificates": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Whether to use certificates for MID Server authentication. If true, a root CA and server certificate will be created in Key Vault."
+      }
+    },
+    "midToolsRemoteUriBase": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "midToolsRemoteUriSas": {
+      "type": "securestring",
+      "defaultValue": ""
+    },
+    "customImageName": {
+      "type": "string",
+      "defaultValue": "snow_mid_custom"
+    },
+    "customDockerfileContent": {
+      "type": "string",
+      "defaultValue": "FROM localhost/snow_mid_server:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133\r\nARG AZ_PWSH_VERSION=\"14.1.0\"\r\nARG ANSIBLE_VERSION=\"9.13.0\"\r\nARG AZ_CLI_VERSION=\"2.74.0\"\r\nARG MID_USERNAME=mid\r\n\r\nUSER root\r\n\r\nRUN dnf update -y && \\\r\n    dnf install -y  ca-certificates curl gnupg && \\\r\n    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/pki/rpm-gpg/microsoft.asc.gpg > /dev/null && \\\r\n    curl -sL https://packages.microsoft.com/config/rhel/9/prod.repo | tee /etc/yum.repos.d/microsoft-prod.repo && \\\r\n    dnf check-update -y && \\\r\n    dnf install -y azure-cli-${AZ_CLI_VERSION}-1.el9 && \\\r\n    dnf install -y https://github.com/PowerShell/PowerShell/releases/download/v7.5.1/powershell-7.5.1-1.rh.x86_64.rpm && \\\r\n    dnf clean all -y\r\n\r\nUSER $MID_USERNAME\r\n\r\nRUN pwsh -C \"Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted\" && \\\r\n    pwsh -C \"Install-Module -Name Az -MinimumVersion ${AZ_PWSH_VERSION} -MaximumVersion ${AZ_PWSH_VERSION} -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\" && \\\r\n    pwsh -C \"Install-Module -Name PSDepend -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\" && \\\r\n    pwsh -C \"Install-Module -Name InvokeBuild -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense\"\r\n\r\nENTRYPOINT [\"/opt/snc_mid_server/init\", \"start\"]\r\n"
+    },
+    "forceBuildCustomImage": {
+      "type": "bool",
+      "defaultValue": false
+    }
+  },
+  "variables": {
+    "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+    "keyVaultName": "[format('snkv-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[format('GetBuildContext-{0}', parameters('midServerName'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "deploymentScriptName": {
+            "value": "[format('SnowMidTools-{0}', parameters('midServerName'))]"
+          },
+          "userAssignedIdentityName": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowDevopsIdentity]"
+          },
+          "midToolsRemoteUriBase": "[if(empty(parameters('midToolsRemoteUriBase')), createObject('value', null()), createObject('value', parameters('midToolsRemoteUriBase')))]",
+          "midToolsRemoteUriSas": "[if(empty(parameters('midToolsRemoteUriSas')), createObject('value', null()), createObject('value', parameters('midToolsRemoteUriSas')))]",
+          "inlineScript": {
+            "value": "      Param(\r\n          [string]$MidServerName = $env:MID_SERVER_NAME,\r\n          [string]$MidServerCluster = $env:MID_SERVER_CLUSTER,\r\n          [string]$RootCACommonName = $env:MID_SERVER_ROOT_CA ?? 'az-mid-ca',\r\n          [string]$MidCertCommonName = $env:MID_SERVER_NAME,\r\n          [System.Boolean]$UseCertificates = $env:SN_MID_USE_CERTIFICATES -eq 'true'\r\n      )\r\n      Resolve-SNOWMIDPrereqs\r\n      $DeploymentScriptOutputs.EntryPoint = @('/opt/snc_mid_server/init')\r\n      $DeploymentScriptOutputs.Cmd = @('start')\r\n      $DeploymentScriptOutputs.EnvVars = @{\r\n          MID_SERVER_NAME         = $MidServerName\r\n          MID_SERVER_CLUSTER      = $MidServerCluster\r\n          SN_MID_ENVIRONMENT_NAME = $env:SN_MID_ENVIRONMENT_NAME\r\n          SN_MID_CONTEXT          = 'azure'\r\n          SN_MID_BUILD_STRATEGY   = 'acr'\r\n      }\r\n      $DeploymentScriptOutputs.SecretEnvVars = @{}\r\n      Connect-SNOWMIDAzureFromEnvironment | Out-Null\r\n      if ($ctx = Resolve-SNOWMIDBuildContext) {\r\n          $DeploymentScriptOutputs.BuildContext = $ctx\r\n          $DeploymentScriptOutputs.VaultName = $ctx.Vault.VaultName\r\n          $DeploymentScriptOutputs.EnvVars += @{\r\n              MID_INSTANCE_URL = \"$($ctx.StorageAccount.tags.SnowHost)\"\r\n              MID_WRAPPER_wrapper__java__classpath__1 = 'extlib/*.jar'\r\n              MID_WRAPPER_wrapper__java__classpath__2 = 'lib/*.jar'\r\n          }\r\n      }\r\n      else {\r\n          throw \"Failed to resolve build context for environment $($env:SN_MID_ENVIRONMENT_NAME). Ensure the environment name is correct and that you have access to it.\"\r\n      }\r\n      if ($UseCertificates) {\r\n          $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCACommonName -ErrorAction Stop\r\n          $MidCert = Set-SNOWMidServerCertificate -VaultName $ctx.Vault.VaultName -LeafCN $MidCertCommonName -Signer $RootCA.Collection[0] -ErrorAction Stop\r\n          $DeploymentScriptOutputs.MidCert = $MidCert\r\n          $DeploymentScriptOutputs.SecretEnvVars.MID_SERVER_PEM_BASE64 = $MidCert.PemSecret.Name\r\n          $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')\r\n          $DeploymentScriptOutputs.Cmd = @(\r\n              '-c'\r\n              'echo $MID_SERVER_PEM_BASE64 | base64 -d > /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/agent && sh bin/scripts/manage-certificates.sh -a DefaultSecurityKeyPairHandle /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/; ./init setup -f; ./init start'\r\n          )\r\n      }\r\n      $SnowConn = Resolve-SNOWMIDEnvironmentAuth\r\n      $DeploymentScriptOutputs.EnvVars.MID_CONFIG_mid__pinned__version = (Get-SNOWMidVersion)\r\n      $BuildResults = Build-SNOWMidImage -Verbose\r\n      $DeploymentScriptOutputs.ImageState = Resolve-SNOWMIDImageState\r\n      $DeploymentScriptOutputs.Image = $DeploymentScriptOutputs.ImageState.CustomImageUri\r\n      $UserResult = Set-SNOWMIDServerUser -MidServerName $MidServerName -MidServerCluster $MidServerCluster\r\n      $DeploymentScriptOutputs.EnvVars.MID_INSTANCE_USERNAME = $UserResult.Credentials.UserName\r\n      $DeploymentScriptOutputs.SecretEnvVars.MID_INSTANCE_PASSWORD = $UserResult.VaultSecret\r\n      $DeploymentScriptOutputs['sysauto_script'] = try {\r\n          Start-SNOWMIDValidationScript -MidServerName $MidServerName -ErrorAction Stop\r\n      }\r\n      catch {\r\n          \"Error: $_\"\r\n      }\r\n      Write-PSFMessage \"Deployment Script complete for MID Server $MidServerName\"\r\n"
+          },
+          "devopsEnvironmentName": {
+            "value": "[parameters('devopsEnvironmentName')]"
+          },
+          "tags": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags]"
+          },
+          "scriptEnvironmentVariables": {
+            "value": [
+              {
+                "name": "MID_SERVER_ROOT_CA",
+                "value": "[format('az-mid-ca-{0}', parameters('devopsEnvironmentName'))]"
+              },
+              {
+                "name": "SN_MID_CUSTOM_DOCKERFILE_BASE64",
+                "value": "[base64(parameters('customDockerfileContent'))]"
+              },
+              {
+                "name": "MID_SERVER_NAME",
+                "value": "[parameters('midServerName')]"
+              },
+              {
+                "name": "MID_SERVER_CLUSTER",
+                "value": "[parameters('midServerCluster')]"
+              },
+              {
+                "name": "SN_MID_CUSTOM_IMAGE_NAME",
+                "value": "[parameters('customImageName')]"
+              },
+              {
+                "name": "SN_MID_FORCE_BUILD_CUSTOM",
+                "value": "[if(parameters('forceBuildCustomImage'), 'true', 'false')]"
+              },
+              {
+                "name": "SN_MID_USE_CERTIFICATES",
+                "value": "[parameters('useCertificates')]"
+              }
+            ]
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "4720830873895395780"
+            }
+          },
+          "parameters": {
+            "devopsEnvironmentName": {
+              "type": "string",
+              "defaultValue": "unts",
+              "maxLength": 5,
+              "metadata": {
+                "description": "The name of the environment. This will be used to tag, and identify resources."
+              }
+            },
+            "deploymentScriptName": {
+              "type": "string",
+              "defaultValue": "[format('SnowMidTools-{0}', parameters('devopsEnvironmentName'))]"
+            },
+            "userAssignedIdentityName": {
+              "type": "string"
+            },
+            "midToolsRemoteUriBase": {
+              "type": "string",
+              "defaultValue": "https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src"
+            },
+            "midToolsRemoteUriSas": {
+              "type": "securestring",
+              "defaultValue": ""
+            },
+            "supportingScriptUris": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "defaultValue": []
+            },
+            "inlineScript": {
+              "type": "string",
+              "defaultValue": "Resolve-SNOWMIDPrereqs\r\n$ctx = Resolve-SNOWMIDBuildContext\r\nforeach($key in $Ctx.Keys) {\r\n  $DeploymentScriptOutputs[$key] = $Ctx[$key]\r\n}\r\n$DeploymentScriptOutputs['ctxJson'] = ($ctx | ConvertTo-Json -Depth 10)\r\n"
+            },
+            "utcValue": {
+              "type": "string",
+              "defaultValue": "[utcNow()]"
+            },
+            "scriptEnvironmentVariables": {
+              "type": "array",
+              "defaultValue": []
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": "[resourceGroup().tags]"
+            }
+          },
+          "variables": {
+            "copy": [
+              {
+                "name": "psToolsSupportFileUris",
+                "count": "[length(variables('psToolsSupportFiles'))]",
+                "input": "[format('{0}/{1}?{2}', parameters('midToolsRemoteUriBase'), variables('psToolsSupportFiles')[copyIndex('psToolsSupportFileUris')], parameters('midToolsRemoteUriSas'))]"
+              }
+            ],
+            "psToolsSupportFiles": [
+              "PSSnow.MidTools.psd1",
+              "PSSnow.MidTools.psm1",
+              "PSSnow.MidTools.CertTools.ps1",
+              "PSSnow.MidTools.Extensions.ps1"
+            ],
+            "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
+            "dsEnv": "[union(createArray(createObject('name', 'SN_MID_ENVIRONMENT_NAME', 'value', parameters('devopsEnvironmentName')), createObject('name', 'SN_MID_CONTEXT', 'value', 'azure'), createObject('name', 'SN_MID_BUILD_STRATEGY', 'value', 'acr'), createObject('name', 'NO_COLOR', 'value', 'true')), parameters('scriptEnvironmentVariables'))]"
+          },
+          "resources": {
+            "storageAccount": {
+              "existing": true,
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-01-01",
+              "name": "[variables('storageAccountName')]"
+            },
+            "userAssignedIdentity": {
+              "existing": true,
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[parameters('userAssignedIdentityName')]"
+            },
+            "manageImageScript": {
+              "type": "Microsoft.Resources/deploymentScripts",
+              "apiVersion": "2023-08-01",
+              "name": "[parameters('deploymentScriptName')]",
+              "location": "[resourceGroup().location]",
+              "identity": {
+                "type": "userAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('userAssignedIdentityName')))]": {}
+                }
+              },
+              "kind": "AzurePowerShell",
+              "properties": {
+                "environmentVariables": "[variables('dsEnv')]",
+                "forceUpdateTag": "[parameters('utcValue')]",
+                "azPowerShellVersion": "14.3",
+                "storageAccountSettings": {
+                  "storageAccountName": "[variables('storageAccountName')]"
+                },
+                "containerSettings": {
+                  "subnetIds": [
+                    {
+                      "id": "[reference('storageAccount', '2023-01-01', 'full').tags.SnowContainerSubnetId]"
+                    }
+                  ]
+                },
+                "scriptContent": "[join(createArray('# GENERATED IN snow-mid-deplyoymentscript.mod.bicep', '# This function is called at the bottom of this script.', 'function SnowMidDeploymentScript {', parameters('inlineScript'), '}', '$DeploymentScriptOutputs.DirContents = Get-ChildItem -Path $PSScriptRoot -Recurse', 'Get-ChildItem -Path $PSScriptRoot -Recurse', 'Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath \"PSSnow.MidTools.psm1\") -Force', 'SnowMidDeploymentScript'), '\n')]",
+                "retentionInterval": "PT1H",
+                "cleanupPreference": "OnSuccess",
+                "supportingScriptUris": "[union(variables('psToolsSupportFileUris'), parameters('supportingScriptUris'))]"
+              },
+              "tags": "[parameters('tags')]",
+              "dependsOn": [
+                "storageAccount"
+              ]
+            }
+          },
+          "outputs": {
+            "scriptOutput": {
+              "type": "object",
+              "value": "[reference('manageImageScript').outputs]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[format('midServerDeployment-{0}', parameters('midServerName'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "userAssignedIdentityName": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowMidServerIdentity]"
+          },
+          "location": {
+            "value": "[resourceGroup().location]"
+          },
+          "midServerName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_SERVER_NAME]"
+          },
+          "midInstanceUrl": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowHost]"
+          },
+          "midInstanceUsername": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_INSTANCE_USERNAME]"
+          },
+          "midInstancePassword": {
+            "reference": {
+              "keyVault": {
+                "id": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+              },
+              "secretName": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_INSTANCE_PASSWORD]"
+            }
+          },
+          "containerRegistryId": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowContainerRegistryId]"
+          },
+          "containerSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowContainerSubnetId]"
+          },
+          "imagePath": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Image]"
+          },
+          "storageAccountName": {
+            "value": "[variables('storageAccountName')]"
+          },
+          "numCpu": {
+            "value": "[parameters('numCpu')]"
+          },
+          "memoryInGB": {
+            "value": "[parameters('memoryInGB')]"
+          },
+          "useCertificates": {
+            "value": "[parameters('useCertificates')]"
+          },
+          "midServerCertificatePemBase64": "[if(parameters('useCertificates'), createObject('reference', createObject('keyVault', createObject('id', resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))), 'secretName', reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_SERVER_PEM_BASE64)), createObject('value', ''))]",
+          "command": {
+            "value": "[union(reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EntryPoint, reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Cmd)]"
+          },
+          "additionalEnvironmentVariables": {
+            "value": [
+              {
+                "name": "SN_MID_ENVIRONMENT_NAME",
+                "value": "[parameters('devopsEnvironmentName')]"
+              },
+              {
+                "name": "SN_MID_CONTEXT",
+                "value": "azure"
+              },
+              {
+                "name": "SN_MID_BUILD_STRATEGY",
+                "value": "acr"
+              },
+              {
+                "name": "MID_WRAPPER_wrapper__java__classpath__1",
+                "value": "extlib/*.jar"
+              },
+              {
+                "name": "MID_WRAPPER_wrapper__java__classpath__2",
+                "value": "lib/*.jar"
+              },
+              {
+                "name": "MID_CONFIG_mid__pinned__version",
+                "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.ImageState.MidVersion]"
+              }
+            ]
+          },
+          "tags": {
+            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "14307410009426116882"
+            }
+          },
+          "functions": [
+            {
+              "namespace": "__bicep",
+              "members": {
+                "parseResourceId": {
+                  "parameters": [
+                    {
+                      "type": "string",
+                      "name": "resourceId"
+                    }
+                  ],
+                  "output": {
+                    "type": "object",
+                    "value": {
+                      "SubscriptionId": "[split(parameters('resourceId'), '/')[2]]",
+                      "ResourceGroup": "[split(parameters('resourceId'), '/')[4]]",
+                      "Name": "[last(split(parameters('resourceId'), '/'))]"
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "parameters": {
+            "midInstanceUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "The ServiceNow URL. Fully qualified. Example: https://<instance>.service-now.com"
+              }
+            },
+            "midServerName": {
+              "type": "string",
+              "metadata": {
+                "description": "The MID Server name"
+              }
+            },
+            "midInstanceUsername": {
+              "type": "string",
+              "metadata": {
+                "description": "The MID Server username. Must exist, and have the mid_server role"
+              }
+            },
+            "midInstancePassword": {
+              "type": "securestring"
+            },
+            "imagePath": {
+              "type": "string",
+              "metadata": {
+                "description": "The fully qualified image path to use for the container. [registry].azurecr.io/snow_mid_custom:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133"
+              }
+            },
+            "containerRegistryId": {
+              "type": "string"
+            },
+            "userAssignedIdentityName": {
+              "type": "string"
+            },
+            "containerSubnetId": {
+              "type": "string"
+            },
+            "storageAccountName": {
+              "type": "string"
+            },
+            "numCpu": {
+              "type": "int",
+              "defaultValue": 1,
+              "allowedValues": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "metadata": {
+                "description": "The number of CPU cores to allocate to the MID Server container"
+              }
+            },
+            "memoryInGB": {
+              "type": "int",
+              "defaultValue": 4,
+              "allowedValues": [
+                1,
+                2,
+                4,
+                8,
+                16
+              ],
+              "metadata": {
+                "description": "The amount of memory in GB to allocate to the MID Server container"
+              }
+            },
+            "useCertificates": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Whether to use certificates for MID Server authentication. If true, a root CA and server certificate will be created in Key Vault."
+              }
+            },
+            "midServerCertificatePemBase64": {
+              "type": "securestring",
+              "defaultValue": ""
+            },
+            "additionalEnvironmentVariables": {
+              "type": "array",
+              "defaultValue": [
+                {
+                  "name": "MID_WRAPPER_wrapper__java__classpath__1",
+                  "value": "extlib/*.jar"
+                },
+                {
+                  "name": "MID_WRAPPER_wrapper__java__classpath__2",
+                  "value": "lib/*.jar"
+                }
+              ]
+            },
+            "location": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply to the executed deployment script"
+              }
+            },
+            "command": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "defaultValue": [
+                "/opt/snc_mid_server/init",
+                "start"
+              ]
+            }
+          },
+          "variables": {
+            "containerRegistryObject": "[__bicep.parseResourceId(parameters('containerRegistryId'))]",
+            "fileShareName": "[toLower(replace(parameters('midServerName'), '-', ''))]",
+            "subnetObject": "[__bicep.parseResourceId(parameters('containerSubnetId'))]",
+            "virtualNetworkName": "[split(parameters('containerSubnetId'), '/')[8]]"
+          },
+          "resources": {
+            "containerRegistryExisting": {
+              "existing": true,
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "subscriptionId": "[variables('containerRegistryObject').SubscriptionId]",
+              "resourceGroup": "[variables('containerRegistryObject').ResourceGroup]",
+              "name": "[variables('containerRegistryObject').Name]"
+            },
+            "userAssignedIdentity": {
+              "existing": true,
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[parameters('userAssignedIdentityName')]"
+            },
+            "storageAccount": {
+              "existing": true,
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-01-01",
+              "name": "[parameters('storageAccountName')]"
+            },
+            "midServerShare": {
+              "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+              "apiVersion": "2023-05-01",
+              "name": "[toLower(format('{0}/default/{1}', parameters('storageAccountName'), variables('fileShareName')))]",
+              "properties": {
+                "shareQuota": 5
+              }
+            },
+            "midServerShareKeystore": {
+              "condition": "[not(parameters('useCertificates'))]",
+              "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+              "apiVersion": "2023-05-01",
+              "name": "[toLower(format('{0}/default/{1}keystore', parameters('storageAccountName'), variables('fileShareName')))]",
+              "properties": {
+                "shareQuota": 1
+              }
+            },
+            "virtualNetwork": {
+              "existing": true,
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2023-05-01",
+              "subscriptionId": "[variables('subnetObject').SubscriptionId]",
+              "resourceGroup": "[variables('subnetObject').ResourceGroup]",
+              "name": "[variables('virtualNetworkName')]"
+            },
+            "containerGroup": {
+              "type": "Microsoft.ContainerInstance/containerGroups",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('midServerName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('userAssignedIdentityName')))]": {}
+                }
+              },
+              "properties": {
+                "containers": [
+                  {
+                    "name": "[parameters('midServerName')]",
+                    "properties": {
+                      "image": "[parameters('imagePath')]",
+                      "resources": {
+                        "requests": {
+                          "cpu": "[parameters('numCpu')]",
+                          "memoryInGB": "[parameters('memoryInGB')]"
+                        }
+                      },
+                      "command": "[parameters('command')]",
+                      "environmentVariables": "[union(createArray(createObject('name', 'HOSTNAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_URL', 'value', parameters('midInstanceUrl')), createObject('name', 'MID_SERVER_NAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_USERNAME', 'value', parameters('midInstanceUsername')), createObject('name', 'MID_INSTANCE_PASSWORD', 'secureValue', parameters('midInstancePassword')), createObject('name', 'MID_CONFIG_azure__client__id', 'value', reference('userAssignedIdentity').principalId), createObject('name', 'MID_CONFIG_mid__ssl__bootstrap__default__check_cert_hostname', 'value', 'false'), createObject('name', 'MID_CUSTOM_PEM_FILE', 'value', '/opt/snc_mid_server/current_cert.pem'), createObject('name', 'MID_SERVER_PEM_BASE64', 'secureValue', if(parameters('useCertificates'), parameters('midServerCertificatePemBase64'), ''))), parameters('additionalEnvironmentVariables'))]",
+                      "volumeMounts": "[if(not(parameters('useCertificates')), createArray(createObject('name', 'midserver', 'mountPath', '/opt/snc_mid_server/mid_container'), createObject('name', 'keystore', 'mountPath', '/opt/snc_mid_server/agent/security')), createArray())]"
+                    }
+                  }
+                ],
+                "imageRegistryCredentials": [
+                  {
+                    "server": "[reference('containerRegistryExisting').loginServer]",
+                    "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('userAssignedIdentityName'))]"
+                  }
+                ],
+                "dnsConfig": "[if(not(empty(tryGet(tryGet(reference('virtualNetwork'), 'dhcpOptions'), 'dnsServers'))), createObject('nameServers', reference('virtualNetwork').dhcpOptions.dnsServers), null())]",
+                "osType": "Linux",
+                "restartPolicy": "Always",
+                "subnetIds": [
+                  {
+                    "name": "default",
+                    "id": "[parameters('containerSubnetId')]"
+                  }
+                ],
+                "volumes": "[if(not(parameters('useCertificates')), createArray(createObject('name', 'midserver', 'azureFile', createObject('shareName', variables('fileShareName'), 'storageAccountName', parameters('storageAccountName'), 'storageAccountKey', listKeys('storageAccount', '2023-01-01').keys[0].value)), createObject('name', 'keystore', 'azureFile', createObject('shareName', format('{0}keystore', variables('fileShareName')), 'storageAccountName', parameters('storageAccountName'), 'storageAccountKey', listKeys('storageAccount', '2023-01-01').keys[0].value))), createArray())]"
+              },
+              "tags": "[union(parameters('tags'), createObject('SnowMidServerName', parameters('midServerName'), 'SnowMidServerUser', parameters('midInstanceUsername'), 'SnowMidImage', parameters('imagePath')))]",
+              "dependsOn": [
+                "containerRegistryExisting",
+                "userAssignedIdentity",
+                "virtualNetwork"
+              ]
+            }
+          },
+          "outputs": {
+            "container": {
+              "type": "object",
+              "value": "[reference('containerGroup', '2023-05-01', 'full')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "storageAccountId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+    },
+    "scriptOutputs": {
+      "type": "object",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs]"
+    }
+  }
+}
