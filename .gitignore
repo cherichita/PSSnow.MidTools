@@ -1,3 +1,5 @@
 .local/
 *.local.ps1
 out/
+src/arm_out/*.zip
+./1
