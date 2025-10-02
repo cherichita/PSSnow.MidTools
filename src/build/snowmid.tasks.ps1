@@ -11,11 +11,11 @@ function SnowMidInitializeTools {
         }
         else {
             Write-Build Yellow "Current context does not match environment. Resetting context."
-            Import-Module "$MidToolsPath/PSSnow.MidTools.psm1" -Force
+            Import-Module "$MidToolsPath/PSSnow.MidTools.psd1" -Force
         }
     }
     else {
-        Import-Module "$MidToolsPath/PSSnow.MidTools.psm1" -Force
+        Import-Module "$MidToolsPath/PSSnow.MidTools.psd1" -Force
     }
     if ($ReloadModules.IsPresent -or (-not (Get-Command -Name 'Get-SNOWAuth' -ErrorAction SilentlyContinue))) {
         Resolve-SNOWMIDPrereqs
@@ -74,6 +74,7 @@ task SnowMidGetEnvironments {
 
 task SnowMidInitializeTools {
     SnowMidInitializeTools
+    $Global:SnowMidContext = Resolve-SNOWMIDBuildContext
 }
 
 task SnowMidCreateUser {

@@ -24,40 +24,6 @@ task DebugLoggingDisabled {
 #     Publish-Module @publishModuleSplat
 # }
 
-task CompressModuleToTemplateOutput {
-    assert $TemplateOutputPath 'Template output path is not set'
-    assert $MidToolsPath 'MidToolsPath is not set'
-    $MidToolsBase = Split-Path -Parent $MidToolsPath
-    
-    $ZipFileName = "PSSnow.MidTools.zip"
-    $ZipFilePath = Join-Path -Path $TemplateOutputPath -ChildPath $ZipFileName
-    if (Test-Path $ZipFilePath) {
-        Remove-Item -Path $ZipFilePath -Force
-    }
-    
-    Write-Host "Creating zip file: $ZipFilePath"
-    Compress-Archive -Path "$MidToolsBase/*" -DestinationPath $ZipFilePath -Force
-    if (Test-Path $ZipFilePath) {
-        Write-Host "Module compressed successfully to $ZipFilePath"
-        $Script:ZipFilePath = $ZipFilePath
-    }
-    else {
-        Write-Error "Failed to create zip file: $ZipFilePath"
-    }
-}
-
-task UploadZipToAzureStorage CompressModuleToTemplateOutput, GetStorageContext, {
-    assert $TemplateOutputPath 'Template output path is not set'
-    assert $TemplateStorageContainerRef 'Template storage container reference is not set'
-    assert $TemplateStorageContext 'Template storage context is not set'
-    $ZipFileName = "PSSnow.MidTools.zip"
-    $ZipFilePath = Join-Path -Path $TemplateOutputPath -ChildPath $ZipFileName
-    Write-Host "Uploading zip file to Azure Storage: $ZipFileName"
-    Set-AzStorageBlobContent -File $ZipFilePath -Container $TemplateStorageContainerRef.Name -Blob $ZipFileName -Context $TemplateStorageContext -Force | Out-Null
-    # Print the URL of the uploaded file
-    $BlobUrl = ($TemplateStorageContainerRef.Context | Get-AzStorageBlob -Container $TemplateStorageContainerRef.Name -Blob $ZipFileName).ICloudBlob.Uri.AbsoluteUri
-    Write-Host "Uploaded to: $BlobUrl"
-}
 
 task CompileBicep {
     $BicepSources = @(
@@ -160,11 +126,11 @@ task GenerateTemplateDocumentation CompileBicep, {
         $ReadmePath = "$OutputDir/README.md"
                 
         Write-Host "Generating documentation for template: $($template.Name)"
-        Generate-TemplateMarkdown -TemplateInfo $template -OutputPath $ReadmePath -BaseUrl "https://github.com/cherichita/PSSnow.MidTools/tree/development/src/arm_out"
+        Generate-TemplateMarkdown -TemplateInfo $template -OutputPath $ReadmePath -BaseUrl "https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src/arm_out"
     }
 }
 
-task GenerateTemplateDocumentationAzureStorage CompileBicep, GetStorageContext, {
+task GenerateTemplateDocumentationAzureStorage CompileBicep, GetTemplateStorageContext, {
     assert $TemplateStorageContainerRef 'Template storage container reference is not set'
     assert $TemplateStorageContext 'Template storage context is not set'
     if (-not $Script:ArmOut) {
@@ -200,7 +166,31 @@ task UploadTemplates GenerateTemplateDocumentationAzureStorage, {
     }
 }
 
-task GetStorageContext {
+task GetStorageContext SnowMidInitializeTools, {
+    assert $SnowMidContext.StorageAccount
+    
+    if ($Global:SnowMidStorageContext = (Get-AzStorageAccount -ResourceGroupName $SnowMidContext.StorageAccount.resourceGroup -Name $SnowMidContext.StorageAccount.name).Context) {
+        Write-Host "Retrieved storage context for account: $($SnowMidContext.StorageAccount)"
+    }
+    else {
+        Write-Error "Failed to get storage context for account: $($SnowMidContext.StorageAccount)"
+    }
+}
+
+task GetStorageShares GetStorageContext, {
+    assert $Global:SnowMidStorageContext 'Storage context is not set'
+    $Shares = Get-AzStorageShare -Context $Global:SnowMidStorageContext
+    if ($Shares) {
+        Write-Host "Retrieved storage shares:"
+        $Shares | ForEach-Object { Write-Host "- $($_.Name)" }
+        $Global:SnowMidStorageShares = $Shares
+    }
+    else {
+        Write-Warning "No storage shares found in the storage account."
+    }
+}
+
+task GetTemplateStorageContext {
     assert $TemplateStorageAccount 'Template storage account is not set'
     $StorageAccount = Search-AzGraph -UseTenantScope -Query "Resources | where type =~ 'Microsoft.Storage/storageAccounts' | where name =~ '$TemplateStorageAccount' | project name, resourceGroup, location, sku, tags, subscriptionId" | Select-Object -First 1
     if (-not $StorageAccount) {
@@ -237,21 +227,34 @@ task GetMidToolsModuleFiles {
     )
     $BasePath = (Resolve-Path "$PSScriptRoot/..").Path
     $BasePaths = foreach ($P in $Paths) {
-        $ModuleFiles = Get-ChildItem -Path "$BasePath/$P" -Recurse
+        $ModuleFiles = Get-ChildItem -Path (Join-Path -Path $BasePath -ChildPath $P) -Recurse
         # Return the path of the file, relative to base
         $ModuleFiles | ForEach-Object {
             if ($_.PSIsContainer -eq $false) {
-                $_.FullName.Substring($BasePath.Length + 1) -replace '\\', '/'
+                $_.FullName.Substring($BasePath.Length + 1)
             }
         }
     }
     $BaseFiles = Get-ChildItem -Path "$BasePath" -File | ForEach-Object {
-        $_.FullName.Substring($BasePath.Length + 1) -replace '\\', '/'
+        $_.FullName.Substring($BasePath.Length + 1)
     }
-    $Script:MidToolsModuleFiles = ($BasePaths + $BaseFiles) | % { "PSSnow.MidTools/$_" }
+    $Script:MidToolsBasePath = (Resolve-Path $BasePath).Path
+    $Script:MidToolsModuleFiles = ($BasePaths + $BaseFiles)
+    $Script:MidToolsContents = @(
+        $BaseFiles
+        $Paths
+    )
+    $ModuleFile = $BaseFiles | Where-Object { $_ -like 'PSSnow.MidTools.psd1' }
+    if ($ModuleFile) {
+        $ModuleManifest = Import-PowerShellDataFile -Path (Join-Path -Path $BasePath -ChildPath $ModuleFile)
+        if ($ModuleManifest) {
+            $Script:MidToolsVersion = $ModuleManifest.ModuleVersion
+            Write-Host "PSSnow.MidTools version: $Script:MidToolsVersion"
+        }
+    }
 }
 
-task UploadModuleFilesToAzureStorage GetStorageContext, GetMidToolsModuleFiles, {
+task UploadModuleFilesToAzureStorage GetTemplateStorageContext, GetMidToolsModuleFiles, {
     assert $TemplateStorageContainerRef 'Template storage container reference is not set'
     assert $TemplateStorageContext 'Template storage context is not set'
     if (-not $Script:MidToolsModuleFiles) {
@@ -274,6 +277,51 @@ task UploadModuleFilesToAzureStorage GetStorageContext, GetMidToolsModuleFiles, 
         }
     }
 }
+
+task CompressModuleToTemplateOutput GetMidToolsModuleFiles, {
+    assert $TemplateOutputPath 'Template output path is not set'
+    assert $MidToolsPath 'MidToolsPath is not set'
+    
+    $ZipFileName = "PSSnow.MidTools.zip"
+    $ZipFilePath = Join-Path -Path $TemplateOutputPath -ChildPath $ZipFileName
+    if (Test-Path $ZipFilePath) {
+        Remove-Item -Path $ZipFilePath -Force
+    }
+    
+    Write-Host "Creating zip file: $ZipFilePath"
+    $Script:MidToolsModuleFiles
+    try{
+        $pwd = Get-Location
+        Set-Location -Path $Script:MidToolsBasePath
+        Compress-Archive -Path $MidToolsContents -DestinationPath $ZipFilePath -Force
+    }catch{
+        Write-Error "Error creating zip file: $_"
+    }finally{
+        Set-Location -Path $pwd
+        Write-Host "Zip file created at: $ZipFilePath"
+    }
+    # if (Test-Path $ZipFilePath) {
+    #     Write-Host "Module compressed successfully to $ZipFilePath"
+    #     $Script:ZipFilePath = $ZipFilePath
+    # }
+    # else {
+    #     Write-Error "Failed to create zip file: $ZipFilePath"
+    # }
+}
+
+task UploadZipToAzureStorage CompressModuleToTemplateOutput, GetTemplateStorageContext, {
+    assert $TemplateOutputPath 'Template output path is not set'
+    assert $TemplateStorageContainerRef 'Template storage container reference is not set'
+    assert $TemplateStorageContext 'Template storage context is not set'
+    $ZipFileName = "PSSnow.MidTools.zip"
+    $ZipFilePath = Join-Path -Path $TemplateOutputPath -ChildPath $ZipFileName
+    Write-Host "Uploading zip file to Azure Storage: $ZipFileName"
+    Set-AzStorageBlobContent -File $ZipFilePath -Container $TemplateStorageContainerRef.Name -Blob $ZipFileName -Context $TemplateStorageContext -Force | Out-Null
+    # Print the URL of the uploaded file
+    $BlobUrl = ($TemplateStorageContainerRef.Context | Get-AzStorageBlob -Container $TemplateStorageContainerRef.Name -Blob $ZipFileName).ICloudBlob.Uri.AbsoluteUri
+    Write-Host "Uploaded to: $BlobUrl"
+}
+
 function Generate-TemplateMarkdown {
     [CmdletBinding()]
     param(

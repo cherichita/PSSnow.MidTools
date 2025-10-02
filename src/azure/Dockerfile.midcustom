@@ -7,7 +7,7 @@ ARG MID_USERNAME=mid
 USER root
 
 RUN dnf update -y && \
-    dnf install -y  ca-certificates curl gnupg && \
+    dnf install -y ca-certificates curl gnupg git wget && \
     curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/pki/rpm-gpg/microsoft.asc.gpg > /dev/null && \
     curl -sL https://packages.microsoft.com/config/rhel/9/prod.repo | tee /etc/yum.repos.d/microsoft-prod.repo && \
     dnf check-update -y && \
