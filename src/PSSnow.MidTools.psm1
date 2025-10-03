@@ -165,7 +165,15 @@ function Connect-SNOWMIDAzureFromEnvironment {
         TenantId    = $env:AZURE_TENANT_ID
         Environment = $env:SN_MID_ENVIRONMENT_NAME
         AzContext   = (Get-AzContext -ErrorAction SilentlyContinue)
-        CliContext  = if ($AzCliExists) { (az account show -o json 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue) } else { $null }
+        CliContext  = if ($AzCliExists) {
+            try{
+                (az account show -o json | ConvertFrom-Json -ErrorAction Stop) 
+            }
+            catch {
+                Write-PSFMessage -Level Warning "Failed to get Azure CLI context: $_"
+                $null
+            }
+        } else { $null }
     }
     if ( $Out.AzContext -and !$Force.IsPresent) {
         $Out.TenantId = $Out.AzContext.Tenant.Id
