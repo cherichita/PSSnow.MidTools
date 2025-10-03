@@ -153,7 +153,7 @@ function Resolve-SNOWMIDAzureCli {
         Write-PSFMessage -Level Important 'Azure CLI not found. Installing Azure CLI'
         if ((Get-Command -Name apt -ErrorAction SilentlyContinue)) {
             Write-PSFMessage -Level Important 'Installing Azure CLI using apt'
-            $InstallResults = (curl -sL https://aka.ms/InstallAzureCLIDeb | bash)
+            (curl -sL https://aka.ms/InstallAzureCLIDeb | bash)
         }
     }
 }
