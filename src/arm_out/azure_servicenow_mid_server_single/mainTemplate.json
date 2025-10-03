@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "1420473488111862128"
+      "templateHash": "6434500845850545620"
     }
   },
   "parameters": {
@@ -57,8 +57,8 @@
       }
     },
     "midToolsRemoteUriBase": {
-      "type": "securestring",
-      "defaultValue": ""
+      "type": "string",
+      "defaultValue": "https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src"
     },
     "midToolsRemoteUriSas": {
       "type": "securestring",

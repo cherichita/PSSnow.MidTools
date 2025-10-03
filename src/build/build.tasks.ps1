@@ -5,7 +5,7 @@ if (-not(Get-Command -Name 'Initialize-WebServerEnvironment' -ErrorAction Silent
 task DebugLoggingEnabled {
     Set-PSFConfig -FullName PSFramework.Message.Info.Maximum -Value 9
     Set-PSFConfig -FullName PSFramework.Message.Info.Minimum -Value 1
-    Set-PSFConfig -FullName PSFramework.Message.Style.Breadcrumbs -Value $false
+    Set-PSFConfig -FullName PSFramework.Message.Style.Breadcrumbs -Value $true
     Set-PSFConfig -FullName PSFramework.Message.Style.Level -Value $true
 }
 

@@ -28,8 +28,6 @@ function Get-NgrokTunnel {
         $LocalAddress = "http://localhost:${PodePort}"
     }
     
-    # Check if Ngrok is running on port 4040
-    $NgrokProcess = Get-Process -Name ngrok -ErrorAction SilentlyContinue
     if ($NgrokProcess) {
         Write-Host "Ngrok is already running on $($NgrokProcess.Id)"
     
@@ -132,7 +130,13 @@ function Start-NgrokTunnel {
         } -ArgumentList $NgrokPath, $NgrokParams
         $Job
     }
-    
+    # Wait for NGROK to start
+    $endTime = (Get-Date).AddSeconds(5)
+    do {
+        $NgrokProcess = Get-Process -Name ngrok -ErrorAction SilentlyContinue
+        if ($NgrokProcess) { break }
+        Start-Sleep -Seconds 0.5
+    } while ((Get-Date) -lt $endTime)
     $result.NgrokTunnel = Get-NgrokTunnel -PodePort $PodePort
     if ($result.NgrokTunnel) {
         $result.NgrokRunning = $true

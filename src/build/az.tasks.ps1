@@ -26,6 +26,7 @@ task ResolveAzContext {
             $SettingsState.Status = 'Error'
         }
     }
+    $SettingsState.Status = if ($SettingsState.Values -notcontains 'Missing' -and $SettingsState.Values -notcontains 'Mismatch (Expected:') { 'OK' } else { 'Error' }
     Write-Build Blue "Settings state: $($SettingsState | ConvertTo-Json -Depth 5)"
     $AzCtx = Get-AzContext -ErrorAction SilentlyContinue
     if (-not $AzCtx) {
@@ -218,8 +219,8 @@ task AzDeployEnvironmentNoCreds ResolveAzContext, {
 }
 
 task AzResolveMidServer {
-    $Global:ContainerResults = Get-SNOWMidAzContainerRecord -ContainerName $MidServerName
-    if ($ContainerResults.count -eq 0) {
+    $Script:ContainerResults = Get-SNOWMidAzContainerRecord -ContainerName $MidServerName
+    if ($Script:ContainerResults.count -eq 0) {
         Write-Build Yellow "Container group '$MidServerName' not found."
         return
     }
@@ -268,10 +269,6 @@ function Get-AzMidLogs {
     }
     Write-Host "Executing command: $Cmd"
     $Cmd | Invoke-Expression
-}
-
-task DDDD {
-    $_SNB.Container = Search-SNOWMidPodmanContainer -ContainerName $MidServerName
 }
 
 task AzEnterShell AzResolveMidServer, {
@@ -331,22 +328,6 @@ task AzInvokeMidPodman {
         Write-Host "Testing Podman Execution"
     } -UsePodmanExec
     $CCC
-}
-
-task AzTestMidServerCommand AzResolveMidServerContext, {
-    Write-Host "Testing Mid Server Commands for $($env:SN_MID_ENVIRONMENT_NAME)"
-    foreach ($MidServer in $MidServerParams) {
-        $TestGuid = [guid]::NewGuid().ToString()
-        $MidServerName = $MidServer.midServerName
-        Write-Host "Testing Mid Server: $MidServerName"
-        $Response = Invoke-SNOWMidCommand -MidServerName $MidServerName -Command "echo `"$($TestGuid)`"" -ErrorAction SilentlyContinue
-        if ($Response) {
-            Write-Host "Response from $MidServerName $($Response | Out-String)"
-        }
-        else {
-            Write-Error "Failed to get response from Mid Server: $MidServerName"
-        }
-    }
 }
 
 task AzClearPermissions ResolveAzContext, SnowMidInitializeTools, {

@@ -159,6 +159,14 @@
                   }
                 },
                 {
+                  "name": "containerRegistryOutputLabel",
+                  "type": "Microsoft.Common.TextBlock",
+                  "visible": true,
+                  "options": {
+                    "text": "Current Container Registry:"
+                  }
+                },
+                {
                   "name": "containerRegistryOutput",
                   "type": "Microsoft.Common.InfoBox",
                   "visible": true,
@@ -380,7 +388,7 @@
               "name": "vnetIdOutput",
               "type": "Microsoft.Common.TextBlock",
               "visible": true,
-              "label": "Subnet ID",
+              "label": "Network ID",
               "options": {
                 "text": "[substring(steps('servicenowConfig').subnetIdOutput, 0, lastIndexOf(steps('servicenowConfig').subnetIdOutput, '/subnets/'))]"
               }
@@ -407,15 +415,15 @@
               "name": "newOrExistingOutput",
               "type": "Microsoft.Common.TextBlock",
               "visible": true,
-              "label": "Network Type",
+              "label": "Network New or Existing",
               "options": {
                 "text": "[string(if(or(empty(steps('basics').devopsEnvironmentDropdown.tags.SnowContainerSubnetId), steps('servicenowConfig').existingNetwork.updateExistingNetwork), equals(steps('servicenowConfig').newNetwork.vnetCombo.newOrExisting, 'new'), false))]"
               }
             },
             {
-              "name": "networkDebug",
+              "name": "networkState",
               "type": "Microsoft.Common.Section",
-              "label": "Network Debug",
+              "label": "Network State",
               "visible": true,
               "elements": [
                 {
@@ -468,6 +476,41 @@
                 "regex": "^https?:\\/\\/.*$",
                 "validationMessage": "Please enter a valid URL."
               }
+            },
+            {
+              "name": "authInfo",
+              "type": "Microsoft.Common.Section",
+              "label": "Current Configuration",
+              "visible": "[and(not(empty(steps('basics').devopsEnvironmentDropdown.tags.SnowAuthState)), not(equals(steps('basics').devopsEnvironmentDropdown.tags.SnowAuthState, 'None')))]",
+              "elements": [
+                {
+                  "name": "authenticationMethod",
+                  "type": "Microsoft.Common.TextBlock",
+                  "visible": true,
+                  "label": "Current Authentication Method",
+                  "options": {
+                    "text": "[parse(steps('basics').devopsEnvironmentDropdown.tags.SnowAuthState).AuthenticationMethod]"
+                  }
+                },
+                {
+                  "name": "lastVerified",
+                  "type": "Microsoft.Common.TextBlock",
+                  "visible": true,
+                  "label": "Last Verified",
+                  "options": {
+                    "text": "[parse(steps('basics').devopsEnvironmentDropdown.tags.SnowAuthState).LastVerified]"
+                  }
+                },
+                {
+                  "name": "version",
+                  "type": "Microsoft.Common.TextBlock",
+                  "visible": true,
+                  "label": "Version",
+                  "options": {
+                    "text": "[parse(steps('basics').devopsEnvironmentDropdown.tags.SnowAuthState).Version]"
+                  }
+                }
+              ]
             },
             {
               "name": "snowInfo",
@@ -624,10 +667,10 @@
         "devopsEnvironmentName": "[if(not(empty(steps('basics').devopsEnvironmentDropdown)), steps('basics').devopsEnvironmentDropdown.tags.SnowEnvironment, steps('basics').devopsEnvironmentName)]",
         "deployNetwork": "[equals(steps('servicenowConfig').newOrExistingOutput, 'true')]",
         "deployPermissions": "[steps('servicenowConfig').deployPermissions]",
-        "vnetName": "[steps('servicenowConfig').networkDebug.vnetName]",
-        "subnetName": "[steps('servicenowConfig').networkDebug.subnetName]",
-        "vnetAddressPrefixes": "[parse(steps('servicenowConfig').networkDebug.vnetAddressPrefixes)]",
-        "subnetAddressPrefix": "[steps('servicenowConfig').networkDebug.subnetAddressPrefix]",
+        "vnetName": "[steps('servicenowConfig').networkState.vnetName]",
+        "subnetName": "[steps('servicenowConfig').networkState.subnetName]",
+        "vnetAddressPrefixes": "[parse(steps('servicenowConfig').networkState.vnetAddressPrefixes)]",
+        "subnetAddressPrefix": "[steps('servicenowConfig').networkState.subnetAddressPrefix]",
         "location": "[steps('basics').resourceScope.location.name]",
         "snowHost": "[steps('servicenowConfig').snowHost]",
         "deployCredentials": "[steps('servicenowConfig').deployCredentials]",

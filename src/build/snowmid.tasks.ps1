@@ -1,10 +1,14 @@
 $MidToolsPath = (Resolve-Path -Path "$PSScriptRoot/../" -ErrorAction Stop).Path
 
-$Global:_SNB ??= @{}
 $Script:SMC ??= @{}
+$Global:_SNB ??= @{}
 $Global:_SNB.SMC = $Script:SMC
 function SnowMidInitializeTools {
-    if ((Get-Command -Name 'Resolve-SNOWMIDBuildContext' -ErrorAction SilentlyContinue)) {
+    if ($ResolveCommand = (Get-Command -Name 'Resolve-SNOWMIDBuildContext' -ErrorAction SilentlyContinue)) {
+        if($ResolveCommand.Module.ModuleBase -ne $MidToolsPath) {
+            Write-Build Yellow "Module path mismatch. Reloading module from $MidToolsPath"
+            Import-Module "$MidToolsPath/PSSnow.MidTools.psd1" -Force
+        }
         $CurrentContext = Resolve-SNOWMIDBuildContext 
         if ($CurrentContext.EnvironmentName -eq $EnvironmentName -and -not $ReloadModules.IsPresent) {
             Write-Build Green "Current context matches environment: $($CurrentContext.EnvironmentName), strategy: $($CurrentContext.BuildStrategy), mid context: $($CurrentContext.MidContext)"
@@ -20,9 +24,9 @@ function SnowMidInitializeTools {
     if ($ReloadModules.IsPresent -or (-not (Get-Command -Name 'Get-SNOWAuth' -ErrorAction SilentlyContinue))) {
         Resolve-SNOWMIDPrereqs
     }
-    $CurrentContext = Resolve-SNOWMIDBuildContext
+    $CurrentContext = Resolve-SNOWMIDBuildContext -ErrorAction SilentlyContinue
     $SnowAuth = Get-SNOWAuth -ErrorAction SilentlyContinue
-    $CurrentState = Get-SNOWMIDEnvironmentAuthSecret -ErrorAction SilentlyContinue
+    # $CurrentState = Get-SNOWMIDEnvironmentAuthSecret -ErrorAction SilentlyContinue
     $StateInstance = $CurrentState.Instance
     if ($StateInstance -like "https://*") {
         $StateInstance = $StateInstance.replace('https://', '')
@@ -74,7 +78,7 @@ task SnowMidGetEnvironments {
 
 task SnowMidInitializeTools {
     SnowMidInitializeTools
-    $Global:SnowMidContext = Resolve-SNOWMIDBuildContext
+    # $Script:SMC.BuildContext = Resolve-SNOWMIDBuildContext
 }
 
 task InitOAuthClient SnowMidInitializeTools, {
@@ -223,10 +227,6 @@ task SnowMidTestInvokeRemoteCommandAll {
 
 task CleanMidServers {
     CleanMidServers
-}
-
-task BBC SnowMidInitializeTools, {
-    Remove-SNOWMIDServerDeployment -MidServerName 'az101testmid01' -Force
 }
 
 task CleanEnvironment SnowMidInitializeTools, {

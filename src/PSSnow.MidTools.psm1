@@ -165,7 +165,7 @@ function Connect-SNOWMIDAzureFromEnvironment {
         TenantId    = $env:AZURE_TENANT_ID
         Environment = $env:SN_MID_ENVIRONMENT_NAME
         AzContext   = (Get-AzContext -ErrorAction SilentlyContinue)
-        CliContext  = if ($AzCliExists) { (az account show -o json 2>&1 | ConvertFrom-Json) } else { $null }
+        CliContext  = if ($AzCliExists) { (az account show -o json 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue) } else { $null }
     }
     if ( $Out.AzContext -and !$Force.IsPresent) {
         $Out.TenantId = $Out.AzContext.Tenant.Id
@@ -258,10 +258,11 @@ function Resolve-SNOWMIDCustomResources {
         Write-Error "No Storage Account found for environment ${Script:SN_MID_ENVIRONMENT_NAME}. Has this environment been provisioned?" -ErrorAction Stop
     }
     else {
-        if($Outputs.SubscriptionId -ne $Outputs.StorageAccount.subscriptionId) {
+        $Outputs.SubscriptionName = (Get-AzSubscription -SubscriptionId $Outputs.StorageAccount.subscriptionId -ErrorAction SilentlyContinue).Name
+        $Outputs.SubscriptionId = $Outputs.StorageAccount.subscriptionId
+            
+        if ($Outputs.SubscriptionId -ne $Outputs.StorageAccount.subscriptionId) {
             Write-PSFMessage -Level Warning "Storage Account $($Outputs.StorageAccount.name) is in subscription $($Outputs.StorageAccount.subscriptionId), but current subscription is $($Outputs.SubscriptionId). Updating SubscriptionId to match Storage Account."
-            $Outputs.SubscriptionName = (Get-AzSubscription -SubscriptionId $Outputs.StorageAccount.subscriptionId -ErrorAction SilentlyContinue).Name
-            $Outputs.SubscriptionId = $Outputs.StorageAccount.subscriptionId
             Set-AzContext -SubscriptionId $Outputs.SubscriptionId | Out-Null
         }
         $Outputs.ResourceGroup = $Outputs.StorageAccount.resourceGroup
@@ -1304,7 +1305,8 @@ function Get-DockerPodmanImageState {
             if ($P.Count -eq 2) {
                 $RegistryName = $P[0]
                 $ImageName = $P[1]
-            }elseif($P.Count -eq 1) {
+            }
+            elseif ($P.Count -eq 1) {
                 $RegistryName = ''
                 $ImageName = $P[0]
             }
@@ -1601,7 +1603,11 @@ function Get-JsonSecret {
                 return $SecretValue
             }
             foreach ($skey in $SecretValue.Keys) {
-                if ($SecretValue[$skey] -is [hashtable] -and $SecretValue[$skey].Keys.Contains('UserName') -and $SecretValue[$skey].Keys.Contains('Password')) {
+                if ($SecretValue[$skey] -is [hashtable] -and $SecretValue[$skey].Keys.Contains('UserName')) {
+                    if ([string]::IsNullOrEmpty($SecretValue[$skey].UserName) -or [string]::IsNullOrEmpty($SecretValue[$skey].Password)) {
+                        Write-PSFMessage -Level Warning "Skipping empty credential for key '$skey'"
+                        continue
+                    }
                     $SecretValueOut[$skey] = New-Object -TypeName PSCredential -ArgumentList $SecretValue[$skey].UserName, (ConvertTo-SecureString -String $SecretValue[$skey].Password -AsPlainText -Force)
                 }
                 elseif ($SecretValue[$skey] -is [string] -and $SecureVariables -contains $skey) {
@@ -1904,7 +1910,8 @@ function Resolve-SNOWMIDEnvironmentAuth {
                         }
                         elseif ($SkipTagUpdate.IsPresent) {
                             Write-PSFMessage -Level Important "Skipping tag update on Storage Account as requested. Time since last update was $([math]::Round($TimeSinceLastVerified.TotalMinutes,1)) minutes."
-                        }else{
+                        }
+                        else {
                             Write-PSFMessage -Level Important "Updating Azure Storage Account tags with ServiceNow MID environment state: $($BuildContext.StorageAccount.Name)"
                             $NewState = ($SnowAuthState | ConvertTo-Json -Compress)
                             Update-AzTag -ResourceId $BuildContext.StorageAccount.resourceId -Tag @{SnowAuthState = $NewState } -Operation Merge -ErrorAction SilentlyContinue | Out-Null

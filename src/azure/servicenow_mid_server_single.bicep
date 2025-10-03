@@ -19,8 +19,7 @@ param memoryInGB int = 4
 @description('Whether to use certificates for MID Server authentication. If true, a root CA and server certificate will be created in Key Vault.')
 param useCertificates bool = true
 
-@secure()
-param midToolsRemoteUriBase string = ''
+param midToolsRemoteUriBase string = 'https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src'
 
 @secure()
 param midToolsRemoteUriSas string = ''
