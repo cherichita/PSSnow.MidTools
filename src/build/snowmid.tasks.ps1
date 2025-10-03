@@ -77,62 +77,6 @@ task SnowMidInitializeTools {
     $Global:SnowMidContext = Resolve-SNOWMIDBuildContext
 }
 
-task SnowMidCreateUser {
-    $Username = "svc.azmidadmin"
-    $CurrentUser = Get-SNOWCurrentUser
-    $CurrentAuth = Get-SNOWAuth
-    $ExistingUser = Get-SNOWUser -user_name $Username -ErrorAction SilentlyContinue
-    $VaultProps = @{
-        SecretName = "snow-admin-$($Username.ToLower() -replace '\.','-')"
-        VaultName  = (Get-SNOWMidToolsStatus).SN_MID_VAULT_NAME
-    }
-    $MidUser = [hashtable]@{
-        user_name                 = $Username
-        user_password             = (GenerateRandomPassword -Length 24 -AsPlainText)
-        active                    = $true
-        email                     = "${Username}@nonexist.local"
-        locked_out                = $false
-        password_needs_reset      = $false
-        first_name                = 'Azure MID'
-        last_name                 = 'Admin'
-        source                    = 'Azure MID'
-        internal_integration_user = $true
-    }
-    if ($ExistingUser) {
-        Write-Build Green "User $Username already exists. Skipping creation."
-        $CurrentSecret = Get-JsonSecret @VaultProps -ErrorAction SilentlyContinue
-        if ($CurrentSecret.Credential) {
-            $TestAuth = @{
-                Instance   = $CurrentAuth.Instance
-                Credential = $CurrentSecret.Credential
-            }
-            $UserValid = Get-SNOWMIDRecordWithCreds -AuthObject $TestAuth
-            if ($UserValid -and -not $Force.IsPresent) {
-                Write-PSFMessage -Level Important "User $Username is valid with existing password."
-                return
-            }
-            else {
-                Write-PSFMessage -Level Warning "User $Username is not valid with existing password. Updating password."
-            }
-        }
-        $UserRecord = Set-SNOWObject -Table 'sys_user' -Sys_ID $ExistingUser.sys_id -Properties $MidUser -PassThru -InputDisplayValue
-        if ($CurrentAuth.Credential -and $CurrentAuth.Credential.Username -eq $Username) {
-            Write-Build Yellow "Current auth is using the user being updated. Updating auth secret as well."
-            Set-SNOWAuth -Instance $CurrentAuth.Instance -Credential ([pscredential]::new($Username, (ConvertTo-SecureString -String $MidUser.user_password -AsPlainText -Force))) -ErrorAction Stop
-        }
-        Write-PSFMessage -Level Important "Updated existing user $($UserRecord.user_name) with new password."
-    }
-    else {
-        $UserRecord = New-SNOWObject -Table 'sys_user' -Properties $MidUser -PassThru
-    }
-    
-    Add-SNOWMIDUserRoles -UserSysId $UserRecord.sys_id -Roles @('admin') | Out-Null
-    Set-SNOWMidEnvironmentSecret -Instance $CurrentAuth.Instance `
-        -Credential ([pscredential]::new($Username, (ConvertTo-SecureString -String $MidUser.user_password -AsPlainText -Force))) `
-        -VaultName $VaultProps.VaultName `
-        -SecretName $VaultProps.SecretName
-}
-
 task InitOAuthClient SnowMidInitializeTools, {
     $OAuthModulePath = "$PSScriptRoot/../../../PSSnow.OAuthClient/src/PSSnow.OAuthClient.psd1"
     Import-Module $OAuthModulePath -Force -Scope Global -ErrorAction Stop

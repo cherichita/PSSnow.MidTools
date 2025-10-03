@@ -1864,7 +1864,7 @@ function Resolve-SNOWMIDEnvironmentAuth {
                         $TokenUpdated = ($NewSnowAuth.Token.access_token -ne $SecretValue.AccessToken) -or ($NewSnowAuth.Token.refresh_token -ne $SecretValue.RefreshToken)                        
                         $TimeDelta = ($NewSnowAuth.Expires - ($SecretValue.Expires)).TotalSeconds
                         $TokenUpdated = ($TokenUpdated -or ($TimeDelta -gt 60) -or ($TimeDelta -lt -60))
-                        Write-PSFMessage -Level Verbose "OAuth token updated: $TokenUpdated (Delta: $([math]::Round($TimeDelta,0)) seconds)"
+                        Write-PSFMessage -Level Verbose "OAuth token status: $TokenUpdated (Delta: $([math]::Round($TimeDelta,0)) seconds)"
                     }
                     if ( $TokenUpdated ) {
                         $Script:SnowEnvironmentAuth.ExpiresInSeconds = ($NewSnowAuth.Token.expires_in)  

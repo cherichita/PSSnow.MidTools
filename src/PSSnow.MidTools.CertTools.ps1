@@ -33,7 +33,7 @@ function Resolve-SNOWMidAzCertificate {
         }
     }
     if ($Collection.Count -eq 0) {
-        Write-Host "Certificate $CertName not found in Key Vault $VaultName. Skipping export."
+        Write-PSFMessage "Certificate $CertName not found in Key Vault $VaultName. Skipping export."
         return $Out
     }
     $PemSecretName = "${CertName}-mid-pem"
@@ -42,10 +42,10 @@ function Resolve-SNOWMidAzCertificate {
     $PEMSecretContent = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(( $PEMContent )))
     
     if ($CurrentPemSecret -eq $PEMSecretContent) {
-        Write-Host "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
+        Write-PSFMessage "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
     }
     else {
-        Write-Host "Updating PEM secret $PemSecretName in Key Vault $VaultName"
+        Write-PSFMessage "Updating PEM secret $PemSecretName in Key Vault $VaultName"
         $PemSecret = Set-AzKeyVaultSecret -VaultName $VaultName -Name $PemSecretName -SecretValue (ConvertTo-SecureString -String $PEMSecretContent -AsPlainText -Force) -ErrorAction SilentlyContinue
     }
     $Out.PemSecret = Get-AzKeyVaultSecret -VaultName $VaultName -Name $PemSecretName -ErrorAction SilentlyContinue
@@ -53,7 +53,7 @@ function Resolve-SNOWMidAzCertificate {
     $Out.Certificate = $Collection[0]
     $Out.Thumbprint = $Collection[0].Thumbprint
     $Out.PublicKeyInfo = [Convert]::ToBase64String($Collection[0].PublicKey.ExportSubjectPublicKeyInfo())
-    Write-Host "Certificate $CertName found in Key Vault $VaultName with thumbprint $($Collection[0].Thumbprint)"
+    Write-PSFMessage "Certificate $CertName found in Key Vault $VaultName with thumbprint $($Collection[0].Thumbprint)"
     if ($OutputPath) {
         $Out += @{
             PfxPath     = Join-Path -Path $OutputPath -ChildPath "${CertName}.pfx"
@@ -62,12 +62,12 @@ function Resolve-SNOWMidAzCertificate {
         }
         if ($SavePfx) {
             $Pfx = $Collection.Export([X509ContentType]::Pkcs12)
-            Write-Host "Exporting certificate to $($Out.PfxPath)"
+            Write-PSFMessage "Exporting certificate to $($Out.PfxPath)"
             Set-Content -Path $Out.PfxPath -Value $Pfx -AsByteStream
         }
         if ($SavePem) {
             $PEMContent = @($Collection[0].PrivateKey.ExportPkcs8PrivateKeyPem(), $Collection.ExportCertificatePems()) -join "`n"
-            Write-Host "Exporting certificates to $($Out.PemPath)"
+            Write-PSFMessage "Exporting certificates to $($Out.PemPath)"
             $CertPemContent = $Collection.ExportCertificatePems() -join "`n"
             $PEMContent | Set-Content -Path $Out.PemPath -Encoding utf8
             $CertPemContent | Set-Content -Path $Out.CertPemPath -Encoding utf8
@@ -110,7 +110,7 @@ function Get-VaultCertificateCommon {
         }
     }
     if ($Collection.Count -eq 0) {
-        Write-Host "Certificate $CertificateName not found in Vault $VaultName."
+        Write-PSFMessage "Certificate $CertificateName not found in Vault $VaultName."
         return $null
     }
     $Out.Collection = $Collection
@@ -125,7 +125,7 @@ function Get-VaultCertificateCommon {
         Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
     }
     else {
-        Write-Host "Updating PEM secret $PemSecretName in Key Vault $VaultName"
+        Write-PSFMessage "Updating PEM secret $PemSecretName in Key Vault $VaultName"
         Set-Secret -Vault $VaultName -Name $PemSecretName -Secret $PEMSecretContent -ErrorAction Stop
         Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName has been updated"
     }
@@ -274,7 +274,7 @@ function Set-SNOWMidRootCertificate {
 
     $CertificateWithKey = $CertRequest.CreateSelfSigned($NotBefore, $NotAfter)
     if ($AzureCert = Set-VaultCertificateCommon -VaultName $VaultName -CertificateName $RootCN -Collection $CertificateWithKey) {
-        Write-Host "Created new root certificate $RootCN in Key Vault $VaultName with thumbprint $($AzureCert.Thumbprint)"
+        Write-PSFMessage "Created new root certificate $RootCN in Key Vault $VaultName with thumbprint $($AzureCert.Thumbprint)"
         return $AzureCert
     }
     else {
@@ -312,7 +312,7 @@ function Set-SNOWMidServerCertificate {
             }
         }
         else {
-            Write-Host "Existing leaf certificate $LeafCN is NOT signed by the current root certificate. Recreating..."
+            Write-PSFMessage "Existing leaf certificate $LeafCN is NOT signed by the current root certificate. Recreating..."
         }
     }
     $Subject = [X500DistinguishedName]::new("CN=${LeafCN}")
@@ -348,7 +348,7 @@ function Set-SNOWMidServerCertificate {
         $AzCert.Collection[0].PrivateKey
     }
     else { 
-        Write-Host "Creating new private key for leaf certificate."
+        Write-PSFMessage "Creating new private key for leaf certificate."
         [RSA]::Create(2048) 
     }
 
@@ -411,13 +411,13 @@ function Set-SNOWMidUserCertificate {
     $CACertificate = Get-SNOWObject -Table 'sys_user_certificate' -Query "name=$CertificateName"
     $ExistingAttachments = Get-SNOWObject -Table 'sys_attachment' -Query "file_name=$($CertificateName).pem"
     if ($ExistingAttachments) {
-        Write-Host "Removing existing attachment $($ExistingAttachments.sys_id)"
+        Write-PSFMessage "Removing existing attachment $($ExistingAttachments.sys_id)"
         $ExistingAttachments | Remove-SNOWObject -PassThru
     }
     if (!$CACertificate) {
         $Attachment = New-SNOWAttachment -File $CertificatePemPath -Sys_Class_Name 'sys_user_certificate' -Sys_ID $CertificateProperties.sys_id -AttachedFilename "${CertificateName}.pem" -PassThru
         $CACertificate = New-SNOWObject -Table 'sys_user_certificate' -Properties $CertificateProperties -PassThru
-        Write-Host "Certificate $($CertificateName) created with sys_id $($CACertificate.sys_id)"
+        Write-PSFMessage "Certificate $($CertificateName) created with sys_id $($CACertificate.sys_id)"
     }
     else {
         Write-Warning "Certificate $($CertificateName) already exists in ServiceNow. Skipping creation."
