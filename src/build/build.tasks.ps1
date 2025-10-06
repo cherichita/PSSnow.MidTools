@@ -220,7 +220,7 @@ task GetTemplateStorageContext {
 }
 
 
-task GetMidToolsModuleFiles {
+task ResolveModuleFiles {
     $Paths = @(
         'azure'
         'build'
@@ -254,7 +254,7 @@ task GetMidToolsModuleFiles {
     }
 }
 
-task UploadModuleFilesToAzureStorage GetTemplateStorageContext, GetMidToolsModuleFiles, {
+task UploadModuleFilesToAzureStorage GetTemplateStorageContext, ResolveModuleFiles, {
     assert $TemplateStorageContainerRef 'Template storage container reference is not set'
     assert $TemplateStorageContext 'Template storage context is not set'
     if (-not $Script:MidToolsModuleFiles) {
@@ -278,7 +278,7 @@ task UploadModuleFilesToAzureStorage GetTemplateStorageContext, GetMidToolsModul
     }
 }
 
-task CompressModuleToTemplateOutput GetMidToolsModuleFiles, {
+task CompressModuleToTemplateOutput ResolveModuleFiles, {
     assert $TemplateOutputPath 'Template output path is not set'
     assert $MidToolsPath 'MidToolsPath is not set'
     
@@ -472,9 +472,19 @@ task StartPodeServer ResolvePodeServer, {
 }
 
 task TestPodeHookRoute StartNgrokTunnel, StartPodeServer, {
-    $TestResult = Test-PodeHookRoute -NgrokTunnel $Script:NgrokTunnel
+    $TestResult = $null
+    $timeout = 10
+    $elapsed = 0
+    do {
+        $TestResult = Test-PodeHookRoute -NgrokTunnel $Script:NgrokTunnel -ErrorAction SilentlyContinue
+        if ($TestResult) { break }
+        Start-Sleep -Seconds 1
+        $elapsed++
+    } while (-not $TestResult -and $elapsed -lt $timeout)
     if (-not $TestResult) {
         Write-Error 'PODE hook route test failed'
+    }else{
+        Write-Build Green "PODE hook route test succeeded $($TestResult | ConvertTo-Json -Depth 5)"
     }
 }
 

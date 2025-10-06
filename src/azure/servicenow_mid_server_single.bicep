@@ -26,21 +26,21 @@ param midToolsRemoteUriSas string = ''
 
 param customImageName string = 'snow_mid_custom'
 param customDockerfileContent string = '''
-FROM localhost/snow_mid_server:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133
-ARG AZ_PWSH_VERSION="14.1.0"
-ARG ANSIBLE_VERSION="9.13.0"
-ARG AZ_CLI_VERSION="2.74.0"
+FROM localhost/snow_mid_base:yokohama-12-18-2024__patch1-02-21-2025_03-05-2025_2133
+ARG AZ_PWSH_VERSION="14.4.0"
+ARG AZ_CLI_VERSION="2.77.0"
+ARG PWSH_VERSION="7.5.3"
 ARG MID_USERNAME=mid
 
 USER root
 
 RUN dnf update -y && \
-    dnf install -y  ca-certificates curl gnupg && \
+    dnf install -y ca-certificates curl gnupg git wget && \
     curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | tee /etc/pki/rpm-gpg/microsoft.asc.gpg > /dev/null && \
     curl -sL https://packages.microsoft.com/config/rhel/9/prod.repo | tee /etc/yum.repos.d/microsoft-prod.repo && \
     dnf check-update -y && \
     dnf install -y azure-cli-${AZ_CLI_VERSION}-1.el9 && \
-    dnf install -y https://github.com/PowerShell/PowerShell/releases/download/v7.5.1/powershell-7.5.1-1.rh.x86_64.rpm && \
+    dnf install -y https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-1.rh.x86_64.rpm && \
     dnf clean all -y
 
 USER $MID_USERNAME
@@ -49,6 +49,12 @@ RUN pwsh -C "Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted" && 
     pwsh -C "Install-Module -Name Az -MinimumVersion ${AZ_PWSH_VERSION} -MaximumVersion ${AZ_PWSH_VERSION} -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense" && \
     pwsh -C "Install-Module -Name PSDepend -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense" && \
     pwsh -C "Install-Module -Name InvokeBuild -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense"
+
+WORKDIR /opt/snc_mid_server/
+
+# Check if the wrapper PID file exists and a HeartBeat is processed in the last 30 minutes
+HEALTHCHECK --interval=5m --start-period=3m --retries=3 --timeout=15s \
+    CMD bash check_health.sh || exit 1
 
 ENTRYPOINT ["/opt/snc_mid_server/init", "start"]
 '''

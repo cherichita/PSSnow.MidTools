@@ -22,4 +22,10 @@ RUN pwsh -C "Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted" && 
     pwsh -C "Install-Module -Name PSDepend -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense" && \
     pwsh -C "Install-Module -Name InvokeBuild -Force -AllowClobber -Scope CurrentUser -Repository PSGallery -AcceptLicense"
 
+WORKDIR /opt/snc_mid_server/
+
+# Check if the wrapper PID file exists and a HeartBeat is processed in the last 30 minutes
+HEALTHCHECK --interval=5m --start-period=3m --retries=3 --timeout=15s \
+    CMD bash check_health.sh || exit 1
+
 ENTRYPOINT ["/opt/snc_mid_server/init", "start"]

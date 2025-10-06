@@ -1,4 +1,4 @@
-task ResolveAzContext {
+task AzResolveContext {
     if (Get-Command -Name Resolve-SNOWMidBuildContext -ErrorAction SilentlyContinue) {
         $AzBuildCtx = Resolve-SNOWMidBuildContext -ErrorAction SilentlyContinue
     }
@@ -41,7 +41,7 @@ task ResolveAzContext {
     }
 }
 
-task AzDeployServicePrincipal ResolveAzContext, {
+task AzDeployServicePrincipal AzResolveContext, {
     $BicepSource = Join-Path $BicepPath 'azuread_serviceprincipals.bicep'
     $ParameterFile = Join-Path $SnowDataPath "azuread_serviceprincipals.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
     if (!(Test-Path $BicepSource)) {
@@ -62,7 +62,7 @@ task AzDeployServicePrincipal ResolveAzContext, {
     $Global:LastAzDeployment
 }
 
-task AzDeployServicePrincipalSecret ResolveAzContext, {
+task AzDeployServicePrincipalSecret AzResolveContext, {
     $ParameterFile = Join-Path $SnowDataPath "azuread_serviceprincipals.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
     $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
     Write-Host "Using parameters file: $ParameterFile - $($ArmParams | ConvertTo-Json -Depth 5)"
@@ -106,7 +106,7 @@ task AzResolveSnowConnection SnowMidInitializeTools, {
     }
 }
 
-task ResolveCurrentAzParameters ResolveAzContext, {
+task ResolveCurrentAzParameters AzResolveContext, {
     $BC = Resolve-SNOWMidBuildContext -ErrorAction SilentlyContinue
     $Tags = $BC.StorageAccount.tags
     $Global:ArmParams = ConvertTo-AzureDeploymentParameters -Tags $Tags
@@ -177,7 +177,7 @@ function ConvertTo-AzureDeploymentParameters {
     return $deploymentParameters
 }
 
-task AzDeployEnvironment AzResolveSnowConnection, ResolveAzContext, {
+task AzDeployEnvironment AzResolveSnowConnection, AzResolveContext, {
     $BicepSource = Join-Path $BicepPath 'azure_servicenow_mid_acs_full.bicep'
     $ParameterFile = Join-Path $SnowDataPath "azure_servicenow_mid_acs_full.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
     $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
@@ -189,16 +189,16 @@ task AzDeployEnvironment AzResolveSnowConnection, ResolveAzContext, {
         Name                  = 'SSDServiceNowMidACS-' + $env:SN_MID_ENVIRONMENT_NAME
         TemplateFile          = $BicepSource
         TemplateParameterFile = $ParameterFile
-        ResourceGroupName     = $AzureSettings.resource_group
+        ResourceGroupName     = $ResourceGroup.ResourceGroupName
         Location              = $ArmParams.parameters.location.value
         deployCredentials     = $true
-        snowCredentials       = $SCO
+        snowCredentialsJson   = ($SCO | ConvertTo-Json -Depth 5 | ConvertTo-SecureString -AsPlainText -Force)
     }
     Write-Host ($DeployParams | ConvertTo-Json -Depth 5)
-    New-AzResourceGroupDeployment @DeployParams
+    New-AzResourceGroupDeployment @DeployParams -Confirm:$true -ErrorAction Stop -Verbose
 }
 
-task AzDeployEnvironmentNoCreds ResolveAzContext, {
+task AzDeployEnvironmentNoCreds AzResolveContext, {
     $BicepSource = Join-Path $BicepPath 'azure_servicenow_mid_acs_full.bicep'
     $ParameterFile = Join-Path $SnowDataPath "azure_servicenow_mid_acs_full.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
     $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
@@ -226,7 +226,7 @@ task AzResolveMidServer {
     }
 }
 
-task AzResolveMidServerContext ResolveAzContext, {
+task AzResolveMidServerContext AzResolveContext, {
     $Script:BicepSource = Join-Path $BicepPath 'servicenow_mid_server_multiple.bicep'
     $Script:ParameterFile = Join-Path $SnowDataPath "azure_mid_servers.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
     $Script:MidServerParams = (Get-Content -Path $Script:ParameterFile | ConvertFrom-Json).parameters.midServers.value
@@ -260,7 +260,7 @@ function Get-AzMidLogs {
         [switch]$Follow
     )
     $Logs = Get-AzContainerInstanceLog -ContainerGroupName $ContainerName -ContainerName $ContainerName -ResourceGroupName $ContainerResults.resourceGroup -Tail 100 -Timestamp 
-    $StampedLogs = foreach($l in $Logs) {
+    $StampedLogs = foreach ($l in $Logs) {
         $Time = ($l -split ' ')[0]
     }
     $Cmd = "az container logs --name $ContainerName --resource-group $($ContainerResults.resourceGroup) --subscription $($ContainerResults.subscriptionId)"
@@ -330,7 +330,7 @@ task AzInvokeMidPodman {
     $CCC
 }
 
-task AzClearPermissions ResolveAzContext, SnowMidInitializeTools, {
+task AzClearPermissions AzResolveContext, SnowMidInitializeTools, {
     $Ctx = Resolve-SNOWMidBuildContext
     $Identities = Get-AzUserAssignedIdentity | Where-Object { $_.PrincipalId -in $Ctx.ManagedIdentities.properties.principalId }
     if ($Identities) {

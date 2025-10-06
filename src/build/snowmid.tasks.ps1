@@ -26,7 +26,7 @@ function SnowMidInitializeTools {
     }
     $CurrentContext = Resolve-SNOWMIDBuildContext -ErrorAction SilentlyContinue
     $SnowAuth = Get-SNOWAuth -ErrorAction SilentlyContinue
-    # $CurrentState = Get-SNOWMIDEnvironmentAuthSecret -ErrorAction SilentlyContinue
+    $CurrentState = Get-SNOWMIDEnvironmentAuthSecret -ErrorAction SilentlyContinue
     $StateInstance = $CurrentState.Instance
     if ($StateInstance -like "https://*") {
         $StateInstance = $StateInstance.replace('https://', '')
@@ -106,17 +106,17 @@ task StartOAuthFlow InitOAuthClient, {
     Test-SnowOAuthTokenExpiration
 }
 
-task GetMidServers {
+task SnowGetMidServers {
     $Script:SMC.MidServers = Get-SNOWObject -Table 'ecc_agent' `
         -ErrorAction Stop
     $Script:SMC.MidServers | Select-Object name, status, version, ip_address, os, sys_id, is_using_custom_cert | ConvertTo-Yaml
 }
 
-task GetMidServerClusters {
-    $Script:SMC.MidServerClusters = Get-SNOWObject -Table 'ecc_agent_cluster_member_m2m' -DisplayValue 'true' -Fields 'sys_id,agent.name,agent.status', 'cluster.name' | Group-Object -Property 'cluster.name' -AsHashTable
+task SnowGetMidServerClusters {
+    Get-SNOWObject -Table 'ecc_agent_cluster_member_m2m' -DisplayValue 'true' -Fields 'sys_id,agent.name,agent.status', 'cluster.name' | Group-Object -Property 'cluster.name' -AsHashTable
 }
 
-task CleanMidServerClusters {
+task SnowCleanMidServerClusters {
     CleanMidServerClusters
 }
 
@@ -225,7 +225,7 @@ task SnowMidTestInvokeRemoteCommandAll {
     # Write-Host "Podman PowerShell Result: $($PodmanPwshResult | ConvertTo-Json -Depth 5)"
 }
 
-task CleanMidServers {
+task SnowCleanMidServers {
     CleanMidServers
 }
 

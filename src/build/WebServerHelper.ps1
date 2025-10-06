@@ -315,7 +315,7 @@ function Test-PodeHookRoute {
         }
     }
     catch {
-        Write-Error "Test failed with error: $($_.Exception.Message)"
+        Write-Warning "Test failed with error: $($_.Exception.Message)"
         return $false
     }
 }

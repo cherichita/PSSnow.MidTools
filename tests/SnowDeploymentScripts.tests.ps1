@@ -67,10 +67,14 @@ BeforeAll {
             [Parameter(Mandatory = $false)]
             [switch]$ForDeploymentScript
         )
-        
-        # Get SnowMidTools content to include with the command
-        $commonFileContent = Get-Content "$PSScriptRoot/../src/PSSnow.MidTools.psm1" -Raw
-        
+        $RemoteBaseUri = 'https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src'
+        $SourceFileDownload = (@(
+                'PSSnow.MidTools.psd1',
+                'PSSnow.MidTools.psm1',
+                'PSSnow.MidTools.CertTools.ps1',
+                'PSSnow.MidTools.Extensions.ps1'
+            ) | ForEach-Object { "Invoke-WebRequest '$RemoteBaseUri/$_' -OutFile '${_}'" }) -join "`n"
+        $ModuleImport = "Import-Module './PSSnow.MidTools.psd1' -Force"
         # Create script header and footer
         $scriptHeader = @'
 $VerbosePreference = 'SilentlyContinue'
@@ -86,22 +90,30 @@ Write-Host "`$AZ_SCRIPTS_OUTPUT_PATH"
 if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
     New-Item -Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH) -ItemType Directory -Force | Out-Null
 }
-`$DeploymentScriptOutputs | ConvertTo-Json -Depth 10 | Out-File -FilePath `$AZ_SCRIPTS_OUTPUT_PATH -Force
+`$DeploymentScriptOutputs | ConvertTo-Json -Depth 3 | Out-File -FilePath `$AZ_SCRIPTS_OUTPUT_PATH -Force
 "@
         
         # Combine all parts
         $fullCommand = if ($ForDeploymentScript) {
             @(
                 "# Running as deployment script",
-                $commonFileContent,
+                $SourceFileDownload
+                "Import-Module './PSSnow.MidTools.psd1' -Force"
+                "function DeploymentScript {"
                 $ScriptBlock.ToString()
+                "}"
+                "DeploymentScript"
             ) -join "`n"
         }
         else {
             @(
                 $scriptHeader,
-                $commonFileContent,
-                $ScriptBlock.ToString(),
+                $SourceFileDownload,
+                "Import-Module './PSSnow.MidTools.psd1' -Force"
+                "function DeploymentScript {"
+                $ScriptBlock.ToString()
+                "}"
+                "DeploymentScript"
                 $scriptFooter
             ) -join "`n"
         }
@@ -176,7 +188,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             [hashtable]$EnvironmentVariables,
             
             [Parameter(Mandatory = $false)]
-            [string]$ImageName = 'mcr.microsoft.com/azuredeploymentscripts-powershell:az13.2'
+            [string]$ImageName = 'mcr.microsoft.com/azuredeploymentscripts-powershell:az14.4'
         )
         
         try {
@@ -193,29 +205,16 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             podman volume create pstes 2>&1 | Out-Null
             # Add output path environment variable
             $OutFile = "DockerOutput-Latest.json"
-            $ContainerOutDir = '/opt/snc_mid_server/testout'
+            $ContainerOutDir = '/tmp'
             $HostOutFilePath = Join-Path $Script:LocalOutputDir $OutFile
-            $OutDir = '/tmp/testout'
-            # Check if running on Windows and convert path for WSL if needed
-            if ($IsWindows) {
-                $mountDir = $mountDir -replace '^([A-Za-z]):', { "/mnt/$($_.Groups[1].Value.ToLower())" } -replace '\\', '/'
-                $TempFilePath = $TempFilePath -replace '^([A-Za-z]):', { "/mnt/$($_.Groups[1].Value.ToLower())" } -replace '\\', '/'
-                wsl.exe mkdir -p $OutDir 2>&1 | Out-Null
-                wsl.exe chmod -R 777 $OutDir 2>&1 | Out-Null
-            }
-            else {
-                chmod -R 777 $mountDir 2>&1 | Out-Null
-                mkdir -p $OutDir 2>&1 | Out-Null
-                chmod -R 777 $OutDir 2>&1 | Out-Null    
-            }
+            $OutDir = '/testout'
             
             # Build podman parameters
             $podmanParams = @(
-                'run',
                 # '--rm',
                 '--entrypoint', '/usr/bin/pwsh',
-                '-v', "${mountDir}:/opt/snc_mid_server/tests",
-                '-v', "${OutDir}:${ContainerOutDir}"
+                '-v', 'pstes:/testout',
+                '-w', '/testout'
             )
             $OutputPath = "$ContainerOutDir/$OutFile"
             $podmanParams += "--env=AZ_SCRIPTS_OUTPUT_PATH=$OutputPath"
@@ -233,25 +232,25 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             $commandParams = @(
                 $ImageName,
                 '-of', 'Text',
-                '-File', "/opt/snc_mid_server/tests/$TempFileName"
+                '-File', "/testout/$TempFileName"
             )
-            
             # Run the command
-            podman $podmanParams $commandParams | Tee-Object -Variable response | Write-Host
+            podman create $podmanParams $commandParams | Tee-Object -Variable containerid | Write-Host
+            $ContainerId = $containerid.Trim()
+            try {
+                podman cp $HostTempFilePath "${ContainerId}:/testout/$TempFileName"
+                podman start -a $ContainerId | Tee-Object -Variable response | Write-Host
             
-            # Find the output file path in the response
-            $localOutputPath = $null
-            foreach ($line in $response -split "`n") {
-                if ($line -match 'DockerOutput.*\.json') {
-                    $localOutputPath = $line -replace $ContainerOutDir, $OutDir
-                    if ($IsWindows) {
-                        wsl.exe cat $localOutputPath | Out-File -FilePath $HostOutFilePath -Force -Encoding utf8 2>&1 | Out-Null
+                # # Find the output file path in the response
+                $localOutputPath = $null
+                foreach ($line in $response -split "`n") {
+                    if ($line -match 'DockerOutput.*\.json') {
+                        podman cp "${ContainerId}:$($line.Trim())" $HostOutFilePath
                     }
-                    else {
-                        cat $localOutputPath | Out-File -FilePath $HostOutFilePath -Force -Encoding utf8 2>&1 | Out-Null
-                    }
-                    break
                 }
+            }
+            finally {
+                podman rm -f $ContainerId | Out-Null
             }
             
             # Parse results
@@ -325,8 +324,8 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
                 devopsEnvironmentName      = $BuildContext.EnvironmentName
                 userAssignedIdentityName   = $BuildContext.DevopsIdentity.name
                 scriptEnvironmentVariables = $containerEnv
-                midToolsRemoteUriBase      = 'https://snowmiddeploy.blob.core.windows.net/snow-ps/PSSnow.MidTools' | ConvertTo-SecureString -AsPlainText -Force
-                midToolsRemoteUriSas       = '' | ConvertTo-SecureString -AsPlainText -Force
+                # midToolsRemoteUriBase      = 'https://snowmiddeploy.blob.core.windows.net/snow-ps/PSSnow.MidTools'
+                # midToolsRemoteUriSas       = '' | ConvertTo-SecureString -AsPlainText -Force
             }
             Write-Host "Deployment parameters: $($deployParams | ConvertTo-Json -Depth 5)"
             
@@ -604,19 +603,20 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
         
         It "Should connect to Azure from container" {
             $result = Invoke-ContainerPowerShellCommand -ScriptBlock {
-                $DeploymentScriptOutputs['ss'] = Get-AzResource -ResourceId '/subscriptions/063aa8c5-6e46-407a-b34e-c44d7f0f1ffb/resourceGroups/snowmid-azure-vnet-rg/providers/Microsoft.Network/virtualNetworks/aci-vnet-default/subnets/aci-subnet-default'
-                # Assert-SNOWMidAzCli
-                # $connectResults = Connect-SNOWMidAzureFromEnvironment
-                # Resolve-SNOWMidPrereqs
-                # $buildContext = Resolve-SNOWMidBuildContext
-                # Resolve-SNOWMidEnvironmentAuth
-                # # $BuildResults = Build-SNOWMidImage
-                # # $SnowConn = Resolve-SNOWMidEnvironmentAuth
-                # $DeploymentScriptOutputs = @{
-                #     BuildContext = $buildContext
-                #     SnowConn     = $connectResults
-                #     BuildResults = $BuildResults
-                # }
+                Resolve-SNOWMidPrereqs
+                $DeploymentScriptOutputs.LocalFiles = Get-ChildItem -Path '.' | Select-Object Name, Length, LastWriteTime
+                $connectResults = Connect-SNOWMidAzureFromEnvironment
+                $buildContext = Resolve-SNOWMidBuildContext
+                $DeploymentScriptOutputs.AvailableModules = Get-Module -ListAvailable | Select-Object Name, Version, Path
+                Assert-SNOWMidAzCli
+                Resolve-SNOWMidEnvironmentAuth
+                $BuildResults = Build-SNOWMidImage
+                $SnowConn = Resolve-SNOWMidEnvironmentAuth
+                $DeploymentScriptOutputs = @{
+                    BuildContext = $buildContext
+                    SnowConn     = $connectResults
+                    BuildResults = $BuildResults
+                }
             } -EnvironmentVariables $Script:ContainerEnvVars
             
             $result | Should -Not -BeNullOrEmpty
@@ -639,12 +639,12 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
             }
             # Set up environment variables for tests
             $Script:DeploymentEnvVars = @{
-                SN_TEST_VAR = $env:SN_MID_ENVIRONMENT_NAME
-                MID_SERVER_NAME = 'azmiduloc06'
-                MID_SERVER_CLUSTER = 'azmiduloc'
+                SN_TEST_VAR             = $env:SN_MID_ENVIRONMENT_NAME
+                MID_SERVER_NAME         = 'azmiduloc06'
+                MID_SERVER_CLUSTER      = 'azmiduloc'
                 SN_MID_ENVIRONMENT_NAME = $env:SN_MID_ENVIRONMENT_NAME
-                SN_MID_CONTEXT = 'azure'
-                SN_MID_BUILD_STRATEGY = 'acr'
+                SN_MID_CONTEXT          = 'azure'
+                SN_MID_BUILD_STRATEGY   = 'acr'
             }
         }
         
@@ -656,6 +656,7 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
                 $env:MID_SERVER_NAME = 'azmiduloc06'
                 $MidServerName = $env:MID_SERVER_NAME
                 Resolve-SNOWMIDPrereqs
+                Resolve-SNOWMIDAzureCli
                 # $connectResults = Connect-SNOWMIDAzureFromEnvironment
                 # $ctx = Resolve-SNOWMIDBuildContext
                 # $SnowConn = Resolve-SNOWMIDEnvironmentAuth
