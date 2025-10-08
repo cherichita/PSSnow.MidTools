@@ -175,11 +175,7 @@ function Connect-SNOWMIDAzureFromEnvironment {
             }
         } else { $null }
     }
-    if ( $Out.AzContext -and !$Force.IsPresent) {
-        $Out.TenantId = $Out.AzContext.Tenant.Id
-        Write-PSFMessage -Level Verbose "Using Existing Azure context: $($Out.AzContext.Name)`n CLI Context: $($Out.CliContext | ConvertTo-Json -Depth 5)"
-        return $Out
-    }
+    
     if ($env:IDENTITY_HEADER) {
         if ($env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and $env:AZURE_TENANT_ID) { 
             Write-PSFMessage -Level Important 'Ignoring MSI. Using environment variables instead' 
@@ -194,6 +190,11 @@ function Connect-SNOWMIDAzureFromEnvironment {
             return $Out
         }
     }
+    if ( $Out.AzContext -and !$Force.IsPresent) {
+        $Out.TenantId = $Out.AzContext.Tenant.Id
+        Write-PSFMessage -Level Verbose "Using Existing Azure context: $($Out.AzContext.Name)`n CLI Context: $($Out.CliContext | ConvertTo-Json -Depth 5)"
+        return $Out
+    }
     if (-not ($env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and $env:AZURE_TENANT_ID)) {
         if (!$Out.AzContext -and ($AzCliExists -and !($Out.CliContext))) {
             Write-PSFMessage -Level Warning 'No Azure context found. AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID must be set'
@@ -204,7 +205,8 @@ function Connect-SNOWMIDAzureFromEnvironment {
             return $Out
         }
     }
-    if ($AzCliExists -and !($Out.CliContext)) {
+    if ($AzCliExists -and (!($Out.CliContext) -or $Force.IsPresent)) {
+        Write-PSFMessage -Level Important 'Logging into Azure CLI using Service Principal'
         $Out.CliContext = az login --service-principal --username $env:AZURE_CLIENT_ID --password $env:AZURE_CLIENT_SECRET --tenant $env:AZURE_TENANT_ID | ConvertFrom-Json | Select-Object -First 1
         $Out.CliVersion = az version | ConvertFrom-Json
     }
