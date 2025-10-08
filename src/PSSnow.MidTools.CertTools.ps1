@@ -110,7 +110,7 @@ function Get-VaultCertificateCommon {
         }
     }
     if ($Collection.Count -eq 0) {
-        Write-PSFMessage "Certificate $CertificateName not found in Vault $VaultName."
+        Write-PSFMessage -Level Important "Certificate $CertificateName not found in Vault $VaultName."
         return $null
     }
     $Out.Collection = $Collection
@@ -125,7 +125,7 @@ function Get-VaultCertificateCommon {
         Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
     }
     else {
-        Write-PSFMessage "Updating PEM secret $PemSecretName in Key Vault $VaultName"
+        Write-PSFMessage -Level Important "Updating PEM secret $PemSecretName in Key Vault $VaultName"
         Set-Secret -Vault $VaultName -Name $PemSecretName -Secret $PEMSecretContent -ErrorAction Stop
         Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName has been updated"
     }

@@ -181,7 +181,7 @@ function Connect-SNOWMIDAzureFromEnvironment {
             Write-PSFMessage -Level Important 'Ignoring MSI. Using environment variables instead' 
         }
         else {
-            if (($AzCliExists) -and !($Out.CliContext)) {
+            if (($AzCliExists)) {
                 $Out.CliContext = az login --identity | ConvertFrom-Json | Select-Object -First 1
                 $Out.CliVersion = az version | ConvertFrom-Json
             }
