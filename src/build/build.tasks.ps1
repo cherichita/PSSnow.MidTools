@@ -11,19 +11,8 @@ task DebugLoggingEnabled {
 
 task DebugLoggingDisabled {
     Set-PSFConfig -FullName PSFramework.Message.Info.Maximum -Value 3
+    Set-PSFConfig -FullName PSFramework.Message.Style.Breadcrumbs -Value $false
 }
-
-
-# task PublishModule {
-#     # Publish to a NuGet Server repository using my NuGetAPI key
-#     $publishModuleSplat = @{
-#         Path        = $MidToolsPath
-#         Repository  = 'LocalPSRepo'
-#         NuGetApiKey = 'none'
-#     }
-#     Publish-Module @publishModuleSplat
-# }
-
 
 task CompileBicep {
     $BicepSources = @(
@@ -96,7 +85,7 @@ task CompileBicep {
             Write-Error "Bicep file not found: $BicepFile"
         }
     }
-    $Global:ArmGlobal = $Script:ArmOut 
+    $Script:ArmGlobal = $Script:ArmOut 
 }
 
 
@@ -111,7 +100,7 @@ task GenerateTemplateDocumentationDebug CompileBicep, TestPodeHookRoute, {
         $ReadmePath = "$OutputDir/README.md"
                 
         Write-Host "Generating documentation for template: $($template.Name)"
-        $BaseUrl = "$($NgrokTunnel.public_url)/az/templates"
+        $BaseUrl = "$($NgrokTunnel.public_url)/templates"
         Generate-TemplateMarkdown -TemplateInfo $template -OutputPath $ReadmePath -BaseUrl $BaseUrl
     }
 }
@@ -169,7 +158,7 @@ task UploadTemplates GenerateTemplateDocumentationAzureStorage, {
 task GetStorageContext SnowMidInitializeTools, {
     assert $SnowMidContext.StorageAccount
     
-    if ($Global:SnowMidStorageContext = (Get-AzStorageAccount -ResourceGroupName $SnowMidContext.StorageAccount.resourceGroup -Name $SnowMidContext.StorageAccount.name).Context) {
+    if ($Script:SnowMidStorageContext = (Get-AzStorageAccount -ResourceGroupName $SnowMidContext.StorageAccount.resourceGroup -Name $SnowMidContext.StorageAccount.name).Context) {
         Write-Host "Retrieved storage context for account: $($SnowMidContext.StorageAccount)"
     }
     else {
@@ -178,12 +167,12 @@ task GetStorageContext SnowMidInitializeTools, {
 }
 
 task GetStorageShares GetStorageContext, {
-    assert $Global:SnowMidStorageContext 'Storage context is not set'
-    $Shares = Get-AzStorageShare -Context $Global:SnowMidStorageContext
+    assert $Script:SnowMidStorageContext 'Storage context is not set'
+    $Shares = Get-AzStorageShare -Context $Script:SnowMidStorageContext
     if ($Shares) {
         Write-Host "Retrieved storage shares:"
         $Shares | ForEach-Object { Write-Host "- $($_.Name)" }
-        $Global:SnowMidStorageShares = $Shares
+        $Script:SnowMidStorageShares = $Shares
     }
     else {
         Write-Warning "No storage shares found in the storage account."
@@ -208,8 +197,8 @@ task GetTemplateStorageContext {
             Write-Host "Creating storage container: $TemplateStorageContainer"
             $StorageAccountContainer = New-AzStorageContainer -Name $TemplateStorageContainer -Context $StorageContext -PublicAccess Blob | Select-Object -First 1
         }
-        $Global:TemplateStorageContext = $StorageContext
-        $Global:TemplateStorageContainerRef = $StorageAccountContainer
+        $Script:TemplateStorageContext = $StorageContext
+        $Script:TemplateStorageContainerRef = $StorageAccountContainer
     }
     catch {
         Write-Host "Error getting context: $_"

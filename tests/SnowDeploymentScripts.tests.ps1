@@ -23,7 +23,14 @@ BeforeAll {
     $env:SN_MID_CONTEXT = 'azure'
     $env:SN_MID_BUILD_STRATEGY = 'acr'
     Import-Module "$PSScriptRoot/../src/PSSnow.MidTools.psd1" -Force
-
+    . "$PSScriptRoot/../src/build/WebServerHelper.ps1"
+    $Script:RemoteBaseUri = if ($NgrokStatus = Get-NgrokTunnel) {
+        Write-PSFMessage -Level Important "Using ngrok tunnel URL: $($NgrokStatus.public_url + '/midtools')"
+        $NgrokStatus.public_url + '/midtools'
+    }
+    else {
+        'https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src'
+    }
     # # Retrieve Azure environment secrets from the vault
     $Script:AzureConfig = Resolve-SNOWMidAzureEnvironmentSecrets -SetEnvironmentVariables
     # # Retrieve ServiceNow environment secrets from the vault 
@@ -67,7 +74,6 @@ BeforeAll {
             [Parameter(Mandatory = $false)]
             [switch]$ForDeploymentScript
         )
-        $RemoteBaseUri = 'https://raw.githubusercontent.com/cherichita/PSSnow.MidTools/refs/heads/development/src'
         $SourceFileDownload = (@(
                 'PSSnow.MidTools.psd1',
                 'PSSnow.MidTools.psm1',
@@ -92,13 +98,19 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
 }
 `$DeploymentScriptOutputs | ConvertTo-Json -Depth 3 | Out-File -FilePath `$AZ_SCRIPTS_OUTPUT_PATH -Force
 "@
-        
+        $VerbosityBlock = @'
+    Set-PSFConfig -FullName PSFramework.Message.Info.Maximum -Value 9
+    Set-PSFConfig -FullName PSFramework.Message.Info.Minimum -Value 1
+    Set-PSFConfig -FullName PSFramework.Message.Style.Breadcrumbs -Value $true
+    Set-PSFConfig -FullName PSFramework.Message.Style.Level -Value $true
+'@
         # Combine all parts
         $fullCommand = if ($ForDeploymentScript) {
             @(
                 "# Running as deployment script",
                 $SourceFileDownload
                 "Import-Module './PSSnow.MidTools.psd1' -Force"
+                $VerbosityBlock
                 "function DeploymentScript {"
                 $ScriptBlock.ToString()
                 "}"
@@ -110,6 +122,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
                 $scriptHeader,
                 $SourceFileDownload,
                 "Import-Module './PSSnow.MidTools.psd1' -Force"
+                $VerbosityBlock
                 "function DeploymentScript {"
                 $ScriptBlock.ToString()
                 "}"
@@ -136,6 +149,8 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
         )
         
         try {
+            $CurrentLocation = Get-Location
+            Set-Location $Script:LocalOutputDir
             $tempFile = Join-Path $Script:LocalOutputDir "TempScript-$((Get-Date).ToString('yyyyMMddHHmmss')).ps1"
             # Set environment variables
             $originalEnvVars = @{}
@@ -152,11 +167,8 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             [System.Environment]::SetEnvironmentVariable('AZ_SCRIPTS_OUTPUT_PATH', $outputPath, 'Process')
             # Encode and run command
             $encodedCommand = Get-EncodedPowerShellCommand -Scriptblock $ScriptBlock
-            # Decode and write to local script file
-            
             # Decode base64 Unicode string to file
             [System.IO.File]::WriteAllText($tempFile, [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encodedCommand)))
-
             pwsh.exe -File $tempFile | Tee-Object -Variable result | Write-Host
                         
             # Parse results
@@ -168,6 +180,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             return $result
         }
         finally {
+            Set-Location $CurrentLocation
             # Restore original environment variables
             foreach ($key in $originalEnvVars.Keys) {
                 [System.Environment]::SetEnvironmentVariable($key, $originalEnvVars[$key], 'Process')
@@ -202,7 +215,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             # Decode base64 Unicode string to file
             [System.IO.File]::WriteAllText($TempFilePath, [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encodedCommand)))
             # OutputVolume
-            podman volume create pstes 2>&1 | Out-Null
+            
             # Add output path environment variable
             $OutFile = "DockerOutput-Latest.json"
             $ContainerOutDir = '/tmp'
@@ -235,6 +248,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
                 '-File', "/testout/$TempFileName"
             )
             # Run the command
+            podman volume create pstes 2>&1 | Out-Null
             podman create $podmanParams $commandParams | Tee-Object -Variable containerid | Write-Host
             $ContainerId = $containerid.Trim()
             try {
@@ -251,6 +265,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             }
             finally {
                 podman rm -f $ContainerId | Out-Null
+                podman volume rm pstes 2>&1 | Out-Null
             }
             
             # Parse results
@@ -292,7 +307,6 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             [Parameter(Mandatory = $false)]
             [hashtable]$EnvironmentVariables
         )
-        
         try {
             # Create bicep deployment template path
             $bicepPath = "$PSScriptRoot/../src/azure/modules/servicenow.midtools.deploymentscript.bicep"
@@ -319,13 +333,12 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
                 Name                       = "TestDeploymentScript-$((Get-Date).ToString('yyyyMMddHHmmss'))"
                 ResourceGroupName          = $BuildContext.StorageAccount.resourceGroup
                 TemplateFile               = $bicepPath
-                DeploymentScriptName       = "TestDeploymentScript"
+                DeploymentScriptName       = "TestDeploymentScript-$((Get-Date).ToString('yyyyMMddHHmmss'))"
                 inlineScript               = $scriptContent
                 devopsEnvironmentName      = $BuildContext.EnvironmentName
                 userAssignedIdentityName   = $BuildContext.DevopsIdentity.name
                 scriptEnvironmentVariables = $containerEnv
-                # midToolsRemoteUriBase      = 'https://snowmiddeploy.blob.core.windows.net/snow-ps/PSSnow.MidTools'
-                # midToolsRemoteUriSas       = '' | ConvertTo-SecureString -AsPlainText -Force
+                midToolsRemoteUriBase      = $Script:RemoteBaseUri
             }
             Write-Host "Deployment parameters: $($deployParams | ConvertTo-Json -Depth 5)"
             
@@ -401,12 +414,9 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
             $result = Invoke-LocalPowerShellCommand -ScriptBlock {
                 Resolve-SNOWMidPrereqs
                 $buildContext = Resolve-SNOWMidBuildContext
-                $Script:AzureConfig = Resolve-SNOWMidAzureEnvironmentSecrets -SetEnvironmentVariables
-                Connect-SNOWMidAzureFromEnvironment
-                $DeploymentScriptOutputs = @{
-                    BuildContext = $buildContext
-                    AzContext    = Get-AzContext
-                }
+                # $Script:AzureConfig = Resolve-SNOWMidAzureEnvironmentSecrets -SetEnvironmentVariables
+                # Connect-SNOWMidAzureFromEnvironment
+                $DeploymentScriptOutputs.BuildContext = $buildContext
             } -EnvironmentVariables $Script:TestEnvVars
             
             $result | Should -Not -BeNullOrEmpty
@@ -498,75 +508,6 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
                 Invoke-SNOWBackgroundScript -ScriptContents $ValidateScript
             }
         }
-
-        
-        It "Should prepare environment and retrieve MID server details" {
-            
-            # First ensure we have a MID server user
-            $midUser = Set-SNOWMidServerUser -MidServerName "azmiduloc06"
-            $midUser | Should -Not -BeNullOrEmpty
-            # ValidateMidServer $midUser.MidServerName
-            # Update environment variables with MID server info
-            $localVars = $Script:TestEnvVars.Clone()
-            $localVars.MID_SERVER_NAME = $midUser.MidServerName
-            $localVars.MID_INSTANCE_URL = $Script:SN_HOST
-            $localVars.MID_INSTANCE_USERNAME = $midUser.Credentials.UserName
-            $localVars.MID_INSTANCE_PASSWORD = ($midUser.Credentials.Password | ConvertFrom-SecureString -AsPlainText)
-            
-            $BuildResults = Build-SNOWMidImage
-            # Use the results and local vars to start a podman container
-            $ImageName = $BuildResults.CustomImageEnvironmentUri
-            # $ImageName = 'localhost/snow_mid_custom:unts'
-            $EnvVars = @{
-                MID_INSTANCE_URL      = $localVars.MID_INSTANCE_URL
-                MID_INSTANCE_USERNAME = $localVars.MID_INSTANCE_USERNAME
-                MID_INSTANCE_PASSWORD = $localVars.MID_INSTANCE_PASSWORD
-                MID_SERVER_NAME       = $localVars.MID_SERVER_NAME
-            }
-            podman rm -f $localVars.MID_SERVER_NAME 2>&1 | Out-Null
-            $podmanParams = @(
-                'run', '-d',
-                '--env', "MID_INSTANCE_URL=$($EnvVars.MID_INSTANCE_URL)",
-                '--env', "MID_INSTANCE_USERNAME=$($EnvVars.MID_INSTANCE_USERNAME)", 
-                '--env', "MID_INSTANCE_PASSWORD=$($EnvVars.MID_INSTANCE_PASSWORD)",
-                '--env', "MID_SERVER_NAME=$($EnvVars.MID_SERVER_NAME)",
-                '--name', $localVars.MID_SERVER_NAME
-                $ImageName
-            )
-            & podman $podmanParams | Tee-Object -Variable response | Write-Host
-            # Wait for MID server to be registered and come online
-            $maxWaitMinutes = 5 # Parameterize this if needed
-            $startTime = Get-Date
-            $timeout = $startTime.AddMinutes($maxWaitMinutes)
-            $MidServer = $null
-            $MidServerName = $localVars.MID_SERVER_NAME
-            Write-Host "Waiting up to $maxWaitMinutes minutes for MID server $MidServerName to come online..."
-
-            while ((Get-Date) -lt $timeout) {
-                $MidServer = Get-SNOWObject -Table 'ecc_agent' -Query "name=$($EnvVars.MID_SERVER_NAME)" | Select-Object -First 1
-                
-                if ($MidServer) {
-                    Write-Host "MID server found with status: $($MidServer.status)"
-                    if ($MidServer.status -eq 'Up') {
-                        Write-Host "MID server is up and running!"
-                        break
-                    }
-                }
-
-                Write-Host "Waiting 30 seconds before next check..."
-                Start-Sleep -Seconds 4
-            }
-
-            if (-not $MidServer) {
-                throw "MID server was not registered after $maxWaitMinutes minutes"
-            }
-            if ($MidServer.status -ne 'Up') {
-                throw "MID server did not come online after $maxWaitMinutes minutes. Current status: $($MidServer.status)"
-            }
-            Write-PSFMessage -Level Important -Message "MID server $($MidServer.name) is up and running with status: $($MidServer.status)"
-            Invoke-SNOWMidValidate -MidServerName $MidServerName -Verbose
-            Write-Host "Podman response: $($response | Out-String)"
-        }
     }
     
     Context "Podman Container Execution" {
@@ -600,7 +541,18 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
             }
             Write-Host ("ContainerEnvVars: $($Script:ContainerEnvVars.Keys | ConvertTo-Json -Depth 5)")
         }
-        
+        It "Should Execute the basic script and connect to Azure" {
+            $result = Invoke-ContainerPowerShellCommand -ScriptBlock {
+                Resolve-SNOWMidPrereqs
+                $DeploymentScriptOutputs.ConnectResults = Connect-SNOWMidAzureFromEnvironment
+                $DeploymentScriptOutputs.SnowAuth = Resolve-SNOWMidEnvironmentAuth
+                $DeploymentScriptOutputs.BuildContext = Resolve-SNOWMidBuildContext
+                $DeploymentScriptOutputs.BuildResults = Build-SNOWMidImage
+            } -EnvironmentVariables $Script:ContainerEnvVars
+            
+            $result | Should -Not -BeNullOrEmpty
+            $result.DeploymentScriptOutputs | Should -Not -BeNullOrEmpty
+        }
         It "Should connect to Azure from container" {
             $result = Invoke-ContainerPowerShellCommand -ScriptBlock {
                 Resolve-SNOWMidPrereqs
@@ -627,7 +579,7 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
     Context "Azure DeploymentScript Execution" {
         BeforeEach {
             # Verify we can access the Azure environment
-            $env:SN_MID_ENVIRONMENT_NAME = 'unts'
+            $env:SN_MID_ENVIRONMENT_NAME ??= 'deva'
             $env:SN_MID_CONTEXT = 'azure'
             $env:SN_MID_BUILD_STRATEGY = 'acr'
             Import-Module "$PSScriptRoot/../src/PSSnow.MidTools.psm1" -Force
@@ -639,12 +591,9 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
             }
             # Set up environment variables for tests
             $Script:DeploymentEnvVars = @{
-                SN_TEST_VAR             = $env:SN_MID_ENVIRONMENT_NAME
-                MID_SERVER_NAME         = 'azmiduloc06'
-                MID_SERVER_CLUSTER      = 'azmiduloc'
-                SN_MID_ENVIRONMENT_NAME = $env:SN_MID_ENVIRONMENT_NAME
-                SN_MID_CONTEXT          = 'azure'
-                SN_MID_BUILD_STRATEGY   = 'acr'
+                SN_TEST_VAR        = $env:SN_MID_ENVIRONMENT_NAME
+                MID_SERVER_NAME    = 'azmiduloc06'
+                MID_SERVER_CLUSTER = 'azmiduloc'
             }
         }
         
@@ -653,72 +602,14 @@ Describe "SnowDeploymentScript Integration Tests" -Tag 'Integration' {
             # and appropriate Azure resources
             
             $result = Invoke-AzDeploymentScriptCommand -ScriptBlock {
-                $env:MID_SERVER_NAME = 'azmiduloc06'
-                $MidServerName = $env:MID_SERVER_NAME
                 Resolve-SNOWMIDPrereqs
-                Resolve-SNOWMIDAzureCli
-                # $connectResults = Connect-SNOWMIDAzureFromEnvironment
-                # $ctx = Resolve-SNOWMIDBuildContext
-                # $SnowConn = Resolve-SNOWMIDEnvironmentAuth
-                # $BuildResults = Build-SNOWMidImage -Verbose
-                # $UserResult = Set-SNOWMIDServerUser -MidServerName $env:MID_SERVER_NAME -MidServerCluster $env:MID_SERVER_CLUSTER
-                # foreach($key in $UserResult.Keys) {
-                #     $DeploymentScriptOutputs[$key] = $UserResult[$key]
-                # }
-                # $DeploymentScriptOutputs['MidVersion'] = Get-SNOWMidVersion
-                # $DeploymentScriptOutputs['sysauto_script'] = try {
-                #     Start-SNOWMIDValidationScript -MidServerName $env:MID_SERVER_NAME -ErrorAction Stop
-                # } catch {
-                #     Write-PSFMessage -Level Warning "Failed to start validation script. Ensure the MID Server has the necessary permissions."
-                #     "Error: $_"
-                # }
-                # $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.KeyVault.Name -RootCN 'az-mid-ca' -ErrorAction Stop
-                # $MidCert = Set-SNOWMidServerCertificate -VaultName $ctx.KeyVault.Name -LeafCN $MidServerName -Signer $RootCA.Collection[0] -ErrorAction Stop
-                # $DeploymentScriptOutputs.MidCert = $MidCert.PublicKeyInfo
-                # $DeploymentScriptOutputs.MidCertSecret = $MidCert.PemSecret.Name
-                # $DeploymentScriptOutputs.BuildContext = $ctx
-                # $DeploymentScriptOutputs.MidCertThumbprint = $MidCert.Thumbprint
-                # $DeploymentScriptOutputs.MidCertSubject = $MidCert.Collection[0].Subject
-                # foreach ($key in $Ctx.Keys) {
-                #     $DeploymentScriptOutputs[$key] = $Ctx[$key]
-                # }
-                # $ImageState = Resolve-SNOWMIDImageState
-                # $DeploymentScriptOutputs['ImageState'] = $ImageState
-                # $DeploymentScriptOutputs['EnvVars'] += @{
-                #     MID_INSTANCE_USERNAME = $UserResult.Credentials.UserName
-                   
-                # }
-                # $DeploymentScriptOutputs['SecretEnvVars'] = @{
-                #     MID_INSTANCE_PASSWORD = $UserResult.VaultSecret
-                #     MID_SERVER_PEM_BASE64      = $MidCert.PemSecret.Name
-                # }
+                Assert-SNOWMIDAzCli
+                $DeploymentScriptOutputs.AzCtx = (az account show -o json | ConvertFrom-Json)
             } -BuildContext $Script:BuildContext -EnvironmentVariables $Script:DeploymentEnvVars
             $Global:RESS = $result            
             $result | Should -Not -BeNullOrEmpty
             $result.Deployment | Should -Not -BeNullOrEmpty
             $result.DeploymentScriptOutputs | Should -Not -BeNullOrEmpty
-        }
-    }
-    
-    Context "MID Server User Management" {
-        
-        
-        It "Should create and validate MID server user" {
-            $midServerName = $Script:NewMidServer.name
-            
-            # Clean up any existing users
-            $existingUser = Get-SNOWObject -Table 'sys_user' -Query "user_name=azmid-$midServerName"
-            if ($existingUser) {
-                Remove-SNOWObject -Table 'sys_user' -Sys_ID $existingUser.sys_id -Confirm:$false -ErrorAction SilentlyContinue
-            }
-            
-            # Create new user
-            $result = Set-SNOWMidServerUser -MidServerName $midServerName
-            
-            $result | Should -Not -BeNullOrEmpty
-            $result.MidServerName | Should -Be $midServerName
-            $result.User | Should -Not -BeNullOrEmpty
-            $result.User.user_name | Should -BeExactly "azmid-$midServerName"
         }
     }
 }

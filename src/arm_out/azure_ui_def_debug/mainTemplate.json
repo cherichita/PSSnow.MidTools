@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "9626355095179850893"
+      "templateHash": "4114901966753021826"
     }
   },
   "parameters": {
@@ -2881,63 +2881,6 @@
         "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('storageAccountName'), 'default', 'ServiceNowMidServers')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('keyVaultSubscription'), parameters('keyVaultResourceGroup')), 'Microsoft.Resources/deployments', 'DevopsVaultAccessPolicies')]"
       ]
-    },
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2022-09-01",
-      "name": "appendResourceGroupTags",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "tags": {
-            "value": {
-              "SnowEnvironments": "[parameters('devopsEnvironmentName')]"
-            }
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.37.4.10188",
-              "templateHash": "11028298029489113171"
-            }
-          },
-          "parameters": {
-            "tags": {
-              "type": "object",
-              "metadata": {
-                "description": "The tags to append to the resource group"
-              }
-            }
-          },
-          "variables": {
-            "existingTags": "[resourceGroup().tags]",
-            "mergedTags": "[union(variables('existingTags'), parameters('tags'))]"
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Resources/tags",
-              "apiVersion": "2021-01-01",
-              "name": "default",
-              "properties": {
-                "tags": "[variables('mergedTags')]"
-              }
-            }
-          ],
-          "outputs": {
-            "mergedTags": {
-              "type": "object",
-              "value": "[variables('mergedTags')]"
-            }
-          }
-        }
-      }
     }
   ],
   "outputs": {

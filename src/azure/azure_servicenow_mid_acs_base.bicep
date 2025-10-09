@@ -291,15 +291,6 @@ module dsValidateEnvironment 'modules/servicenow.midtools.deploymentscript.bicep
   ]
 }
 
-module appendResourceGroupTags 'modules/append-resoure-group-tags.bicep' = {
-  name: 'appendResourceGroupTags'
-  params: {
-    tags: {
-      SnowEnvironments: devopsEnvironmentName
-    }
-  }
-}
-
 output resourceGroupId string = resourceGroup().id
 output containerRegistry object = containerRegistry.outputs.containerRegistry
 output keyVault object = keyVault.outputs.keyVault

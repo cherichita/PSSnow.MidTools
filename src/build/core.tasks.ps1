@@ -6,8 +6,6 @@ param(
     $Extends
 )
 
-task SnowMid {
-    Write-PSFMessage "Starting SnowMid build process"
-    # & "$PSScriptRoot/src/build/BuildHelper.build.ps1" -Extends $Extends -Force -ReloadModules -UpdateCredentials
-    Write-PSFMessage "Completed SnowMid build process"
+Enter-Build {
+    Write-Build Green "Loading PSSnow.MidTools InvokeBuild tasks from $PSScriptRoot"
 }

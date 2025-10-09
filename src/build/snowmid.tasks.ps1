@@ -1,8 +1,8 @@
 $MidToolsPath = (Resolve-Path -Path "$PSScriptRoot/../" -ErrorAction Stop).Path
 
 $Script:SMC ??= @{}
-$Global:_SNB ??= @{}
-$Global:_SNB.SMC = $Script:SMC
+$Script:_SNB ??= @{}
+$Script:_SNB.SMC = $Script:SMC
 function SnowMidInitializeTools {
     if ($ResolveCommand = (Get-Command -Name 'Resolve-SNOWMIDBuildContext' -ErrorAction SilentlyContinue)) {
         if($ResolveCommand.Module.ModuleBase -ne $MidToolsPath) {
@@ -82,7 +82,12 @@ task SnowMidInitializeTools {
 }
 
 task InitOAuthClient SnowMidInitializeTools, {
-    $OAuthModulePath = "$PSScriptRoot/../../../PSSnow.OAuthClient/src/PSSnow.OAuthClient.psd1"
+    $OAuthModulePath = if(Get-Module -Name 'PSSnow.OAuthClient' -ListAvailable -ErrorAction SilentlyContinue) {
+        (Get-Module -Name 'PSSnow.OAuthClient' -ListAvailable).ModuleBase + '/PSSnow.OAuthClient.psd1'
+    }
+    else {
+        "$PSScriptRoot/../../../PSSnow.OAuthClient/src/PSSnow.OAuthClient.psd1"
+    }
     Import-Module $OAuthModulePath -Force -Scope Global -ErrorAction Stop
     $Script:OAuthBuildContext = Resolve-SNOWMIDBuildContext
     $Script:OAuthClient = Initialize-SNOWOauthClient -SnowHost $OAuthBuildContext.StorageAccount.tags.SnowHost `
@@ -94,22 +99,22 @@ task InitOAuthClient SnowMidInitializeTools, {
 }
 
 task StartOAuthFlow InitOAuthClient, {
-    $Global:SNOWOAUthToken = Start-SNOWOauthInteractive -SnowHost $OAuthBuildContext.StorageAccount.tags.SnowHost `
+    $Script:SNOWOAUthToken = Start-SNOWOauthInteractive -SnowHost $OAuthBuildContext.StorageAccount.tags.SnowHost `
         -ClientID "ff97fbb4da3313004591cc3a291b47fd" `
         -VaultName $OAuthBuildContext.Vault.VaultName `
         -VaultSecretName "snow-oauth-$($EnvironmentName.ToLower())" -Force
     Set-SNOWMidEnvironmentSecret -Instance $OAuthBuildContext.StorageAccount.tags.SnowHost `
         -ClientID "ff97fbb4da3313004591cc3a291b47fd" `
-        -AccessToken $Global:SNOWOAUthToken.AccessToken `
-        -RefreshToken $Global:SNOWOAUthToken.RefreshToken `
-        -Expires $Global:SNOWOAUthToken.Expires
+        -AccessToken $Script:SNOWOAUthToken.AccessToken `
+        -RefreshToken $Script:SNOWOAUthToken.RefreshToken `
+        -Expires $Script:SNOWOAUthToken.Expires
     Test-SnowOAuthTokenExpiration
 }
 
 task SnowGetMidServers {
-    $Script:SMC.MidServers = Get-SNOWObject -Table 'ecc_agent' `
+    $Script:MidServers = Get-SNOWObject -Table 'ecc_agent' `
         -ErrorAction Stop
-    $Script:SMC.MidServers | Select-Object name, status, version, ip_address, os, sys_id, is_using_custom_cert | ConvertTo-Yaml
+    $Script:MidServers | Select-Object name, status, version, ip_address, os, sys_id, is_using_custom_cert, validated | ConvertTo-Yaml
 }
 
 task SnowGetMidServerClusters {
@@ -231,8 +236,8 @@ task SnowCleanMidServers {
 
 task CleanEnvironment SnowMidInitializeTools, {
     $Proceed = $true
-    $Global:_SNB['Context'] = Resolve-SNOWMIDBuildContext -ReloadContext
-    Set-AzContext -SubscriptionId $Global:_SNB['Context'].StorageAccount.subscriptionId -ErrorAction Stop
+    $Script:_SNB['Context'] = Resolve-SNOWMIDBuildContext -ReloadContext
+    Set-AzContext -SubscriptionId $Script:_SNB['Context'].StorageAccount.subscriptionId -ErrorAction Stop
     $MidToolsStatus = Get-SNOWMidToolsStatus
     if ($MidToolsStatus.SN_MID_VAULT_NAME -and (Get-SecretVault -Name $MidToolsStatus.SN_MID_VAULT_NAME -ErrorAction SilentlyContinue)) {
         $Proceed = Read-Host -Prompt "Do you want to clean up the vault '$($MidToolsStatus.SN_MID_VAULT_NAME)'? (Y/N)"
@@ -246,11 +251,11 @@ task CleanEnvironment SnowMidInitializeTools, {
     else {
         Write-Build Green "No vault found to clean up."
     }
-    if (-not $Global:_SNB['Context'].StorageAccount) {
+    if (-not $Script:_SNB['Context'].StorageAccount) {
         Write-Build Red "No context found to clean up."
         return
     }
-    $Global:_SNB['Context'].ManagedIdentities | ForEach-Object {
+    $Script:_SNB['Context'].ManagedIdentities | ForEach-Object {
         $ManagedIdentity = $_
         Write-Build Yellow "Searching for permissions for managed identity: $($ManagedIdentity.properties.principalId)"
         $Permissions = Get-AzRoleAssignment -ObjectId $ManagedIdentity.properties.principalId -ErrorAction SilentlyContinue
@@ -272,7 +277,7 @@ task CleanEnvironment SnowMidInitializeTools, {
     }
 
     # Clean up any MID Servers that are running
-    $Containers = $Global:_SNB['Context'].Raw | Where-Object { $_.type -eq 'microsoft.containerinstance/containergroups' }
+    $Containers = $Script:_SNB['Context'].Raw | Where-Object { $_.type -eq 'microsoft.containerinstance/containergroups' }
     if ($Containers) {
         $Containers | ForEach-Object {
             $ContainerName = $_.name
@@ -287,8 +292,8 @@ task CleanEnvironment SnowMidInitializeTools, {
     }
 
     # Purge the KeyVault and prompt the user
-    $KeyVaultName = $Global:_SNB['Context'].StorageAccount.tags.SnowKeyVaultId -split '/' | Select-Object -Last 1
-    $Location = $Global:_SNB['Context'].StorageAccount.location
+    $KeyVaultName = $Script:_SNB['Context'].StorageAccount.tags.SnowKeyVaultId -split '/' | Select-Object -Last 1
+    $Location = $Script:_SNB['Context'].StorageAccount.location
     if ($KeyVaultName) {
         Write-Host "Searching for KeyVault: $KeyVaultName in location: $Location"
         $ActiveKeyVault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction SilentlyContinue
@@ -329,15 +334,15 @@ task CleanEnvironment SnowMidInitializeTools, {
     }
 
     # Remove the managed identities
-    $Global:_SNB['Context'].ManagedIdentities | ForEach-Object {
+    $Script:_SNB['Context'].ManagedIdentities | ForEach-Object {
         $ManagedIdentity = $_
         Write-Build Yellow "Removing managed identity: $($ManagedIdentity.name)"
         Remove-AzUserAssignedIdentity -ResourceGroupName $ManagedIdentity.resourceGroup -Name $ManagedIdentity.name -ErrorAction SilentlyContinue
     }
 
     # # Remove the storage account
-    $StorageAccountName = $Global:_SNB['Context'].StorageAccount.name
-    Remove-AzStorageAccount -ResourceGroupName $Global:_SNB['Context'].StorageAccount.resourceGroup -Name $StorageAccountName
+    $StorageAccountName = $Script:_SNB['Context'].StorageAccount.name
+    Remove-AzStorageAccount -ResourceGroupName $Script:_SNB['Context'].StorageAccount.resourceGroup -Name $StorageAccountName
 }
 
 task CleanContainerRegistryPermissions {

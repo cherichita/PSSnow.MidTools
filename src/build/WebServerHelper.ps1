@@ -27,7 +27,7 @@ function Get-NgrokTunnel {
     if (-not $LocalAddress) {
         $LocalAddress = "http://localhost:${PodePort}"
     }
-    
+    $NgrokProcess = Get-Process -Name ngrok -ErrorAction SilentlyContinue
     if ($NgrokProcess) {
         Write-Host "Ngrok is already running on $($NgrokProcess.Id)"
     
@@ -72,8 +72,8 @@ function Initialize-NgrokEnvironment {
     
     $result = @{
         NgrokRunning = $false
-        NgrokPath = $null
-        NgrokTunnel = $null
+        NgrokPath    = $null
+        NgrokTunnel  = $null
     }
     
     $NgrokCommand = Get-Command ngrok -ErrorAction SilentlyContinue
@@ -107,13 +107,13 @@ function Start-NgrokTunnel {
         Hashtable containing updated NgrokTunnel and NgrokRunning status
     #>
     param(
-        [string]$NgrokPath,
+        [string]$NgrokPath = (Get-Command ngrok -ErrorAction Continue).Source,
         [int]$PodePort = 8099,
-        [bool]$NgrokRunning = $false
+        [bool]$NgrokRunning = (Get-Process -Name ngrok -ErrorAction SilentlyContinue).Count -gt 0
     )
     
     $result = @{
-        NgrokTunnel = $null
+        NgrokTunnel  = $null
         NgrokRunning = $NgrokRunning
     }
     
@@ -153,7 +153,7 @@ function Stop-NgrokTunnel {
         Whether NGROK is currently running
     #>
     param(
-        [bool]$NgrokRunning = $false
+        [bool]$NgrokRunning = (Get-Process -Name ngrok -ErrorAction SilentlyContinue).Count -gt 0
     )
     
     if ($NgrokRunning) {
@@ -179,7 +179,7 @@ function Get-PodeServerStatus {
     )
     
     $result = @{
-        PodeJob = $null
+        PodeJob   = $null
         IsRunning = $false
     }
     
@@ -188,6 +188,7 @@ function Get-PodeServerStatus {
         $result.PodeJob = $PodeJobs[0]
         $result.IsRunning = $true
         Write-Host "Pode server is already running on port ${PodePort}"
+        $result.status = Invoke-RestMethod -Uri "http://localhost:${PodePort}/status" -ErrorAction SilentlyContinue
     }
     else {
         Write-Host 'Pode server is not running'
@@ -210,17 +211,27 @@ function Start-PodeServer {
         The started job object
     #>
     param(
-        [hashtable]$ScriptTemplatePaths = @{},
+        [hashtable]$ScriptTemplatePaths,
         [int]$PodePort = 8099,
-        [System.Management.Automation.Job]$PodeJob = $null
+        [System.Management.Automation.Job]$PodeJob = (Get-PodeServerStatus -PodePort $PodePort).PodeJob
     )
-    if(-not (Get-Module -Name 'Pode' -ErrorAction SilentlyContinue -ListAvailable)) {
+    if (-not (Get-Module -Name 'Pode' -ErrorAction SilentlyContinue -ListAvailable)) {
         Install-Module -Name 'Pode' -Scope CurrentUser -Force
     }
+    if (-not $ScriptTemplatePaths) {
+        Write-Host "No ScriptTemplatePaths provided, using defaults"
+        $ScriptTemplatePaths = @{
+            'midtools'  = (Resolve-Path "$PSScriptRoot/.." -ErrorAction SilentlyContinue).Path
+            'templates' = (Resolve-Path "$PSScriptRoot/../arm_out" -ErrorAction SilentlyContinue).Path
+        }
+    }
     if (-not $PodeJob) {
+        Write-Host "Script Template Paths: $($ScriptTemplatePaths | ConvertTo-Json -Depth 3)"
         $Job = Start-Job -Name 'PodeServer' -ScriptBlock {
             param($ScriptTemplatePaths, $PodePort)
             Start-PodeServer {
+                Set-PodeState -Name 'StartTime' -Value (Get-Date).ToString("o")
+                Set-PodeState -Name 'ScriptTemplatePaths' -Value $ScriptTemplatePaths
                 Add-PodeMiddleware -Name 'AccessControl' -ScriptBlock {
                     Add-PodeHeader -Name 'Access-Control-Allow-Origin' -Value '*'
                     return $true
@@ -240,13 +251,28 @@ function Start-PodeServer {
                 Add-PodeRoute -Method Get -Path '/ping' -ScriptBlock {
                     Write-PodeJsonResponse -Value @{ 'value' = 'pong'; }
                 }
+                Add-PodeRoute -Method Get -Path '/status' -ScriptBlock {
+                    $Status = @{
+                        Time                = (Get-Date).ToString("o")
+                        ScriptTemplatePaths = Get-PodeState -Name 'ScriptTemplatePaths'
+                        StartTime           = Get-PodeState -Name 'StartTime'
+                    }
+                    Write-PodeJsonResponse -Value $Status
+                }
                 foreach ($key in $ScriptTemplatePaths.Keys) {
-                    Add-PodeStaticRoute -Path "/az/${key}" -Source $ScriptTemplatePaths[$key] -FileBrowser
+                    Add-PodeStaticRoute -Path "/${key}" -Source $ScriptTemplatePaths[$key] -FileBrowser
                 }
             }
         } -ArgumentList $ScriptTemplatePaths, $PodePort
         
         Write-Host "Started PODE server on port ${PodePort}"
+        $endTime = (Get-Date).AddSeconds(15)
+        do {
+            $PodeStatus = Invoke-RestMethod -Uri "http://localhost:${PodePort}/status" -ErrorAction SilentlyContinue -SkipHttpErrorCheck
+            if ($PodeStatus) { break }
+            Write-Progress -Activity "Waiting for PODE server to start..." -Status "Checking..." -SecondsRemaining ((New-TimeSpan -Start (Get-Date) -End $endTime).TotalSeconds)
+            Start-Sleep -Seconds 0.5
+        } while ((Get-Date) -lt $endTime)
         return $Job
     }
     
@@ -281,7 +307,7 @@ function Test-PodeHookRoute {
         Boolean indicating if the test passed
     #>
     param(
-        [object]$NgrokTunnel
+        [object]$NgrokTunnel = (Get-NgrokTunnel -ErrorAction SilentlyContinue)
     )
     
     if (-not $NgrokTunnel) {
@@ -337,7 +363,7 @@ function Initialize-WebServerEnvironment {
     )
     
     $result = @{
-        PodePort = $PodePort
+        PodePort            = $PodePort
         ScriptTemplatePaths = $ScriptTemplatePaths
     }
     

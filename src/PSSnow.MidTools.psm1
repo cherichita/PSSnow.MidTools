@@ -1821,6 +1821,7 @@ function Resolve-SNOWMIDEnvironmentAuth {
         [switch]$SkipTagUpdate
     )
     process {
+        Resolve-SNOWMIDBuildContext | Out-Null
         $SecretValue = Get-SNOWMIDEnvironmentAuthSecret -SecretName $SecretName -VaultName $VaultName
         if ($SecretValue.Username -and $SecretValue.Password) {
             $SecretValue.Credential = [pscredential]::new($SecretValue.Username, $SecretValue.Password)

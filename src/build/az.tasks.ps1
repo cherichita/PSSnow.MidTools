@@ -29,6 +29,15 @@ task AzResolveContext {
     $SettingsState.Status = if ($SettingsState.Values -notcontains 'Missing' -and $SettingsState.Values -notcontains 'Mismatch (Expected:') { 'OK' } else { 'Error' }
     Write-Build Blue "Settings state: $($SettingsState | ConvertTo-Json -Depth 5)"
     $AzCtx = Get-AzContext -ErrorAction SilentlyContinue
+    if(Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
+        $AzCliCtx = az account show --output json | ConvertFrom-Json
+        if(-not $AzCliCtx -or $AzCliCtx.id -ne $Script:AzureSettings.subscription_id) {
+            az account set --subscription $Script:AzureSettings.subscription_id | Out-Null
+        }
+        else {
+            Write-Build Green "Azure CLI context already set to subscription: $($AzCliCtx.name) ($($AzCliCtx.id))"
+        }
+    }
     if (-not $AzCtx) {
         Write-Error "No Azure context found. Please login to Azure using Connect-AzAccount."
         return
@@ -58,13 +67,13 @@ task AzDeployServicePrincipal AzResolveContext, {
         TemplateFile          = $BicepSource
         TemplateParameterFile = $ParameterFile
     }
-    $Global:LastAzDeployment = New-AzResourceGroupDeployment @SPDeployParams -ErrorAction Stop
-    $Global:LastAzDeployment
+    $Script:LastAzDeployment = New-AzResourceGroupDeployment @SPDeployParams -ErrorAction Stop
+    $Script:LastAzDeployment
 }
 
 task AzDeployServicePrincipalSecret AzResolveContext, {
     $ParameterFile = Join-Path $SnowDataPath "azuread_serviceprincipals.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
-    $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
+    $Script:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
     Write-Host "Using parameters file: $ParameterFile - $($ArmParams | ConvertTo-Json -Depth 5)"
     if (-not ($AppName = $ArmParams.parameters.applicationName.value)) {
         Write-Error "Application name not found in parameters file: $ParameterFile"
@@ -94,7 +103,7 @@ task AzDeployServicePrincipalSecret AzResolveContext, {
 }
 
 task AzResolveSnowConnection SnowMidInitializeTools, {
-    $Global:SCO = Resolve-SNOWMidEnvironmentAuth -ErrorAction SilentlyContinue
+    $Script:SCO = Resolve-SNOWMidEnvironmentAuth -ErrorAction SilentlyContinue
     if ($SCO.Credential) {
         $SCO.Credential = @{
             UserName = $SCO.Credential.UserName
@@ -109,7 +118,7 @@ task AzResolveSnowConnection SnowMidInitializeTools, {
 task ResolveCurrentAzParameters AzResolveContext, {
     $BC = Resolve-SNOWMidBuildContext -ErrorAction SilentlyContinue
     $Tags = $BC.StorageAccount.tags
-    $Global:ArmParams = ConvertTo-AzureDeploymentParameters -Tags $Tags
+    $Script:ArmParams = ConvertTo-AzureDeploymentParameters -Tags $Tags
     Write-Host ($ArmParams | ConvertTo-Json -Depth 10)
 }
 
@@ -180,10 +189,10 @@ function ConvertTo-AzureDeploymentParameters {
 task AzDeployEnvironment AzResolveSnowConnection, AzResolveContext, {
     $BicepSource = Join-Path $BicepPath 'azure_servicenow_mid_acs_full.bicep'
     $ParameterFile = Join-Path $SnowDataPath "azure_servicenow_mid_acs_full.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
-    $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
+    $Script:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
     if (-not ($ResourceGroup = Get-AzResourceGroup -Name $AzureSettings.resource_group -ErrorAction SilentlyContinue)) {
         Write-Host "Resource group $($AzureSettings.resource_group) does not exist. Creating it..."
-        $ResourceGroup = New-AzResourceGroup -Name $AzureSettings.resource_group -Location $Global:ArmParams.parameters.location.value -ErrorAction Stop
+        $ResourceGroup = New-AzResourceGroup -Name $AzureSettings.resource_group -Location $Script:ArmParams.parameters.location.value -ErrorAction Stop
     }
     $DeployParams = @{
         Name                  = 'SSDServiceNowMidACS-' + $env:SN_MID_ENVIRONMENT_NAME
@@ -201,10 +210,10 @@ task AzDeployEnvironment AzResolveSnowConnection, AzResolveContext, {
 task AzDeployEnvironmentNoCreds AzResolveContext, {
     $BicepSource = Join-Path $BicepPath 'azure_servicenow_mid_acs_full.bicep'
     $ParameterFile = Join-Path $SnowDataPath "azure_servicenow_mid_acs_full.$($env:SN_MID_ENVIRONMENT_NAME).parameters.json"
-    $Global:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
+    $Script:ArmParams = (Get-Content -Path $ParameterFile | ConvertFrom-Json)
     if (-not ($ResourceGroup = Get-AzResourceGroup -Name $AzureSettings.resource_group -ErrorAction SilentlyContinue)) {
         Write-Host "Resource group $($AzureSettings.resource_group) does not exist. Creating it..."
-        $ResourceGroup = New-AzResourceGroup -Name $AzureSettings.resource_group -Location $Global:ArmParams.parameters.location.value -ErrorAction Stop
+        $ResourceGroup = New-AzResourceGroup -Name $AzureSettings.resource_group -Location $Script:ArmParams.parameters.location.value -ErrorAction Stop
     }
     $DeployParams = @{
         Name                  = 'SSDServiceNowMidACS-' + $env:SN_MID_ENVIRONMENT_NAME
@@ -319,12 +328,12 @@ task AzInvokeMidEccCommandTestAzPs {
         $Output.AzContext = Get-AzContext -ErrorAction SilentlyContinue
         $Output
     }
-    $Global:PP = Invoke-SNOWMidPowerShellCommand -MidServerName $MidServerName -Command $TestCommand
+    $Script:PP = Invoke-SNOWMidPowerShellCommand -MidServerName $MidServerName -Command $TestCommand
     $PP.StdOut
 }
 
 task AzInvokeMidPodman {
-    $Global:CCC = Invoke-SNOWMidPowerShellCommand -MidServerName $MidServerName -Command {
+    $Script:CCC = Invoke-SNOWMidPowerShellCommand -MidServerName $MidServerName -Command {
         Write-Host "Testing Podman Execution"
     } -UsePodmanExec
     $CCC
