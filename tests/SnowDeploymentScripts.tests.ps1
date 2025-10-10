@@ -248,7 +248,8 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
                 '-File', "/testout/$TempFileName"
             )
             # Run the command
-            podman volume create pstes 2>&1 | Out-Null
+            $VolumeGuid = [guid]::NewGuid().ToString()
+            podman volume create $VolumeGuid 2>&1 | Out-Null
             podman create $podmanParams $commandParams | Tee-Object -Variable containerid | Write-Host
             $ContainerId = $containerid.Trim()
             try {
@@ -265,7 +266,7 @@ if (-not (Test-Path (Split-Path -Parent `$AZ_SCRIPTS_OUTPUT_PATH))) {
             }
             finally {
                 podman rm -f $ContainerId | Out-Null
-                podman volume rm pstes 2>&1 | Out-Null
+                podman volume rm $VolumeGuid 2>&1 | Out-Null
             }
             
             # Parse results
