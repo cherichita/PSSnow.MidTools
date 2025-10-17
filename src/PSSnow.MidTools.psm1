@@ -69,7 +69,7 @@ function Initialize-SNOWMidTools {
         'cherichita/PSSnow'                     = @{
             Source     = 'GitHubRepo'
             Repository = 'cherichita/PSSnow'
-            Version    = '1.4.0'
+            Version    = '1.4.1'
             Target     = 'CurrentUser'
             Parameters = @{
                 ExtractPath = 'src/'
@@ -689,7 +689,7 @@ function Get-SNOWMIDRecordWithCreds {
         'OAuth - client credentials'
     }
     elseif ($AuthObject.Credential) {
-        'Basic Auth'
+        'Basic Auth with username ' + $AuthObject.Credential.UserName
     }
     else {
         'None'

@@ -279,13 +279,15 @@ task CompressModuleToTemplateOutput ResolveModuleFiles, {
     
     Write-Host "Creating zip file: $ZipFilePath"
     $Script:MidToolsModuleFiles
-    try{
+    try {
         $pwd = Get-Location
         Set-Location -Path $Script:MidToolsBasePath
         Compress-Archive -Path $MidToolsContents -DestinationPath $ZipFilePath -Force
-    }catch{
+    }
+    catch {
         Write-Error "Error creating zip file: $_"
-    }finally{
+    }
+    finally {
         Set-Location -Path $pwd
         Write-Host "Zip file created at: $ZipFilePath"
     }
@@ -472,9 +474,95 @@ task TestPodeHookRoute StartNgrokTunnel, StartPodeServer, {
     } while (-not $TestResult -and $elapsed -lt $timeout)
     if (-not $TestResult) {
         Write-Error 'PODE hook route test failed'
-    }else{
+    }
+    else {
         Write-Build Green "PODE hook route test succeeded $($TestResult | ConvertTo-Json -Depth 5)"
     }
+}
+
+function getCertificateSha256FingerPrint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        $Certificate
+    )
+    process {
+        $sha256 = New-Object System.Security.Cryptography.SHA256Managed
+        $hashBytes = $sha256.ComputeHash($Certificate.RawData)
+        return [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
+    }
+}
+
+function Set-SNOWMidRootCertificateTrust {
+    [CmdletBinding()]
+    param(
+        [string]$RootCN = "az-mid-ca-$($env:SN_MID_ENVIRONMENT_NAME)"
+    )
+    # \
+    $ctx = Resolve-SNOWMIDBuildContext
+    $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCN -ErrorAction Stop
+    $TempFile = New-TemporaryFile
+    $TempFilePath = $TempFile.FullName
+    if ($PemContent = $RootCA.Collection.ExportCertificatePems()) {
+        $Sha256FingerPrint = getCertificateSha256FingerPrint -Certificate $RootCA.Collection[0]
+        Write-PSFMessage "Importing Root CA certificate $RootCN with SHA256 Fingerprint $Sha256FingerPrint into ServiceNow trust store."
+        $PemContent | Out-File -FilePath $TempFilePath -Encoding ascii
+        $CertificateProperties = @{
+            active                  = 'true'
+            name                    = $RootCN
+            sys_id                  = ([guid]::NewGuid().ToString('N'))
+            type                    = 'trust_store_ca'
+            short_description       = 'Imported CA For Mutual Auth DT'
+            sys_class_name          = 'sys_ca_certificate'
+            format                  = 'pem'
+            expiration_notification = 'false'
+        }
+        $CaCertificate = Get-SNOWObject -Table 'sys_ca_certificate' -Query "name=$RootCN" -ErrorAction SilentlyContinue
+        if ( $CaCertificate ) {
+            Write-PSFMessage -Level Important "Root CA certificate $RootCN already exists in ServiceNow. Status: $($CaCertificate | Select-Object -Property active, sys_id, publish_status)"
+            $Sha256Matches = $Sha256FingerPrint -eq $CaCertificate.sha256_fingerprint
+            if ( -not $Sha256Matches ) {
+                Write-PSFMessage "Warning: Existing Root CA certificate $RootCN fingerprint does not match the expected fingerprint. Existing: $($CaCertificate.sha256_fingerprint), Expected: $Sha256FingerPrint"
+            }
+            else {
+                Write-PSFMessage "Existing Root CA certificate $RootCN fingerprint matches expected fingerprint."
+            }
+        }
+        else {
+            # Remove existing attachment if present
+            $ExistingAttachments = Get-SNOWObject -Table 'sys_attachment' -Query "file_name=$($CertificateName).pemANDtable_name=sys_ca_certificate" -ErrorAction SilentlyContinue
+            if ( $ExistingAttachments ) {
+                Remove-SNOWObject -Table 'sys_attachment' -Sys_ID $ExistingAttachments.sys_id -ErrorAction Stop | Out-Null
+                Write-PSFMessage "Removed existing attachment for Root CA certificate $RootCN."
+            }
+            # Create new CA certificate attachment before commiting the new sys_ca_certificate record. This ensures the attachment is processed by the business rules."
+            $Attachment = New-SNOWAttachment -File $TempFilePath -Sys_Class_Name 'sys_ca_certificate' -Sys_ID $CertificateProperties.sys_id -AttachedFilename "${RootCN}.pem" -PassThru
+            $CaCertificate = New-SNOWObject -Table 'sys_ca_certificate' -Properties $CertificateProperties -ErrorAction Stop
+            Write-PSFMessage "Imported Root CA certificate $RootCN into ServiceNow."
+        }
+    }
+    return @{
+        RootCA            = $RootCA
+    }
+}
+
+task EnableUserMutualAuth SnowMidInitializeTools, {
+    $ctx = Resolve-SNOWMIDBuildContext
+    $Script:CoreCert = Set-SNOWMidRootCertificateTrust
+    $RootCA = $Script:CoreCert.RootCA
+    $MyUser = Get-SNOWCurrentUser -ErrorAction Stop
+    $LeafCN = "user-$($MyUser.sys_id)"
+    if ($MyUser) {
+        Write-Host "Enabling mutual authentication for user: $($MyUser.user_name)"
+        $Script:UserCertificate = Set-SNOWMidServerCertificate -VaultName $ctx.Vault.VaultName -LeafCN $LeafCN -Signer $RootCA.Collection[0] -ErrorAction Stop
+        $TempFile = New-TemporaryFile
+        $TempFilePath = $TempFile.FullName
+        if ($PemContent = $Script:UserCertificate.Collection.ExportCertificatePems()) {
+            $PemContent | Out-File -FilePath $TempFilePath -Encoding ascii
+            Set-SNOWMidUserCertificate -UserName $MyUser.user_name -CertificatePemPath $TempFilePath -CertificateName $LeafCN -ErrorAction Stop
+            Write-PSFMessage "Mutual authentication enabled for user $($MyUser.user_name) with certificate $LeafCN."
+        }
+    }   
 }
 
 task ShutdownPodeServer {
