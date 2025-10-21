@@ -166,14 +166,15 @@ function Connect-SNOWMIDAzureFromEnvironment {
         Environment = $env:SN_MID_ENVIRONMENT_NAME
         AzContext   = (Get-AzContext -ErrorAction SilentlyContinue)
         CliContext  = if ($AzCliExists) {
-            try{
+            try {
                 (az account show -o json | ConvertFrom-Json -ErrorAction Stop) 
             }
             catch {
                 Write-PSFMessage -Level Warning "Failed to get Azure CLI context: $_"
                 $null
             }
-        } else { $null }
+        }
+        else { $null }
     }
     
     if ($env:IDENTITY_HEADER) {
@@ -791,6 +792,32 @@ function Add-SNOWMIDUserRoles {
     $RoleList
 }
 
+function Add-SNOWMidUserGroup {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserSysId,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Groups
+    )
+    $RequestedGroups = Get-SNOWObject -Table 'sys_user_group' -Query "name=$($Groups -join ',')"
+    $UserGroups = Get-SNOWObject -Table 'sys_user_grmember' -Query "user=$UserSysId"
+    $GroupList = @()
+    $GroupList += $UserGroups.group
+    foreach ($Group in $RequestedGroups) {
+        if ($GroupList.value -contains $Group.sys_id) {
+            Write-PSFMessage "User [$UserSysId] already in group $($Group.name)"
+            continue
+        }
+        $GroupProperties = @{
+            user  = $UserSysId
+            group = $Group.sys_id
+        }
+        Write-PSFMessage -Level Significant "Adding user [$UserSysId] to group $($Group.name)"
+        $GroupList += New-SNOWObject -Table 'sys_user_grmember' -Properties $GroupProperties -PassThru
+    }
+    $GroupList
+}
+
 function Set-SNOWMIDServerUser {
     param(
         [Parameter(Mandatory = $true)]
@@ -799,6 +826,7 @@ function Set-SNOWMIDServerUser {
         [string]$MidServerUserName = "azmid-$MidServerName",
         [securestring]$Password,
         [string[]]$Roles = @('mid_server'),
+        [string[]]$Groups = @(),
         [string[]]$Capabilities = @('ALL'),
         [string]$MidServerCluster = 'azure',
         [hashtable]$UserValues = @{},
@@ -852,10 +880,11 @@ function Set-SNOWMIDServerUser {
         web_services_access_only  = $true
         employee_number           = ($MidMetadata.Values -join '|')
     }
+    Write-PSFMessage -Level Verbose "MID USER $($MidUser | Select-Object -ExcludeProperty user_password | Out-String )"
     $CurrentSnowAuth = Get-SNOWAuth -ErrorAction SilentlyContinue
     $UserIsAdmin = $false
     if ($CurrentSnowAuth) {
-        $RoleRecords = Get-SNOWObject -Table 'sys_user_has_role' -Query "user_name=javascript:gs.getUserName()" -ErrorAction SilentlyContinue -ErrorVariable UserIsAdminError
+        $RoleRecords = Get-SNOWObject -Table 'sys_user_has_role' -Query "user.user_name=javascript:gs.getUserName()" -ErrorAction SilentlyContinue -ErrorVariable UserIsAdminError
         if ($UserIsAdminError) {
             Write-PSFMessage -Level Warning "Current user is not an admin. Cannot assign roles or create user. Proceeding with passthrough."
         }
@@ -867,7 +896,7 @@ function Set-SNOWMIDServerUser {
     else {
         Write-PSFMessage -Level Error -Message "No ServiceNow authentication found in context"
     }
-    $MidServerUser = Get-SNOWObject -Table 'sys_user' -Query "user_name=$MidServerUserName" -Verbose
+    $MidServerUser = Get-SNOWObject -Table 'sys_user' -Query "user_name=$MidServerUserName" -Verbose | Select-Object -First 1
     if ($MidServerUser) {
         if ($UserIsAdmin -and $MidServerUser.locked_out -eq 'true') {
             Write-PSFMessage -Level Warning "User $MidServerUserName is locked out. Unlocking user."
@@ -902,6 +931,9 @@ function Set-SNOWMIDServerUser {
     }
     if ($UserIsAdmin) {
         $MidServerUserRoles = Add-SNOWMIDUserRoles -UserSysId $MidServerUser.sys_id -Roles $Roles
+        if ($Groups) {
+            $MidServerGroups = Add-SNOWMidUserGroup -UserSysId $MidServerUser.sys_id -Groups $Groups
+        }
     }
     else {
         Write-PSFMessage -Level Warning "Current user is not an admin. Cannot assign roles to $MidServerUserName. Roles must be assigned manually."
@@ -910,17 +942,18 @@ function Set-SNOWMIDServerUser {
     if ($MidUserValid) {
         $CurrentSecret = Get-Secret -Name $MidSecretName -Vault $Script:SN_MID_VAULT_NAME -ErrorAction SilentlyContinue -AsPlainText
         if ($CurrentSecret -and $CurrentSecret -eq $MidUserCredentials.GetNetworkCredential().Password) {
-            Write-PSFMessage "Secret $MidSecretName already exists and is the same as the new password. No need to update."
+            Write-PSFMessage -Level Important  "Secret $MidSecretName already exists and is the same as the new password. No need to update."
         }
         else {
-            Write-PSFMessage -Level Important "Setting password for $MidServerUserName in Vault"
-            Set-Secret -Name $MidSecretName -Secret $MidUserCredentials.Password -Vault $Script:SN_MID_VAULT_NAME -ErrorAction SilentlyContinue
+            Write-PSFMessage -Level Important "Setting password for $MidServerUserName in Vault - Secret Name: $MidSecretName"
+            Set-Secret -Name $MidSecretName -Secret $MidUserCredentials.Password -Vault $Script:SN_MID_VAULT_NAME
         }
     }
     $Results = [ordered]@{
         MidServerName = $MidServerName
         User          = $MidServerUser
         Roles         = $MidServerUserRoles
+        Groups        = $MidServerGroups
         Credentials   = $MidUserCredentials
         MidVersion    = $MidUserValid.value
         VaultSecret   = $MidSecretName

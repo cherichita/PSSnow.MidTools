@@ -426,3 +426,90 @@ function Set-SNOWMidUserCertificate {
         }
     }
 }
+
+# Check Mutual Authentication state in ServiceNow instance
+function Get-SNOWMidMutualAuthState {
+    [CmdletBinding()]
+    param(
+        $RootCN = "az-mid-ca-$($env:SN_MID_ENVIRONMENT_NAME)"
+    )
+    $SupportTls = try { 
+        Invoke-SNOWRestMethod -Method Get -Uri '/adcv2/supports_tls' 
+    }
+    catch { 
+        Write-PSFMessage -Level Important "Mutual authentication support check failed. https://support.servicenow.com/kb?id=kb_article_view&sysparm_article=KB1116112 may provide more information."
+     }
+    $sys_ca_certificate = Get-SNOWObject -Table 'sys_ca_certificate' -Query "name=$RootCN" -ErrorAction SilentlyContinue
+    @{
+        Valid              = ($sys_ca_certificate -and $sys_ca_certificate.active `
+                -and $sys_ca_certificate.publish_status -eq 'exists' -and $SupportTls -eq 'true')
+        SupportsMutualAuth = $SupportTls -eq 'true'
+        sys_ca_certificate = $sys_ca_certificate
+    }
+}
+
+function Set-SNOWMidMutualAuthRoot {
+    [CmdletBinding()]
+    param(
+        [string]$RootCN
+    )
+    $ctx = Resolve-SNOWMIDBuildContext
+    $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCN -ErrorAction Stop
+    $TempFile = New-TemporaryFile
+    $TempFilePath = $TempFile.FullName
+    if ($PemContent = $RootCA.Collection.ExportCertificatePems()) {
+        $Sha256FingerPrint = getCertificateSha256FingerPrint -Certificate $RootCA.Collection[0]
+        Write-PSFMessage "Importing Root CA certificate $RootCN with SHA256 Fingerprint $Sha256FingerPrint into ServiceNow trust store."
+        $PemContent | Out-File -FilePath $TempFilePath -Encoding ascii
+        $CertificateProperties = @{
+            active                  = 'true'
+            name                    = $RootCN
+            sys_id                  = ([guid]::NewGuid().ToString('N'))
+            type                    = 'trust_store_ca'
+            short_description       = 'Import CA - Managed by PSSnow.MidTools'
+            sys_class_name          = 'sys_ca_certificate'
+            format                  = 'pem'
+            expiration_notification = 'false'
+        }
+        $CaCertificate = Get-SNOWObject -Table 'sys_ca_certificate' -Query "name=$RootCN" -ErrorAction SilentlyContinue
+        if ( $CaCertificate ) {
+            Write-PSFMessage -Level Important "Root CA certificate $RootCN already exists in ServiceNow. Status: $($CaCertificate | Select-Object -Property active, sys_id, publish_status)"
+            $Sha256Matches = $Sha256FingerPrint -eq $CaCertificate.sha256_fingerprint
+            if ( -not $Sha256Matches ) {
+                Write-PSFMessage -Level Warning "Existing Root CA certificate $RootCN fingerprint does not match the expected fingerprint. Existing: $($CaCertificate.sha256_fingerprint), Expected: $Sha256FingerPrint"
+            }
+            else {
+                Write-PSFMessage -Level Important "Existing Root CA certificate $RootCN fingerprint matches expected fingerprint."
+            }
+        }
+        else {
+            # Remove existing attachment if present
+            $ExistingAttachments = Get-SNOWObject -Table 'sys_attachment' -Query "file_name=$($CertificateName).pemANDtable_name=sys_ca_certificate" -ErrorAction SilentlyContinue
+            if ( $ExistingAttachments ) {
+                Remove-SNOWObject -Table 'sys_attachment' -Sys_ID $ExistingAttachments.sys_id -ErrorAction Stop | Out-Null
+                Write-PSFMessage "Removed existing attachment for Root CA certificate $RootCN."
+            }
+            # Create new CA certificate attachment before commiting the new sys_ca_certificate record. This ensures the attachment is processed by the business rules."
+            $Attachment = New-SNOWAttachment -File $TempFilePath -Sys_Class_Name 'sys_ca_certificate' -Sys_ID $CertificateProperties.sys_id -AttachedFilename "${RootCN}.pem" -PassThru
+            $CaCertificate = New-SNOWObject -Table 'sys_ca_certificate' -Properties $CertificateProperties -ErrorAction Stop
+            Write-PSFMessage "Imported Root CA certificate $RootCN into ServiceNow."
+        }
+    }
+    return @{
+        RootCA = $RootCA
+    }
+}
+
+
+function getCertificateSha256FingerPrint {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        $Certificate
+    )
+    process {
+        $sha256 = New-Object System.Security.Cryptography.SHA256Managed
+        $hashBytes = $sha256.ComputeHash($Certificate.RawData)
+        return [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
+    }
+}

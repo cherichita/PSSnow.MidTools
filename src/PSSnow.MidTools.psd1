@@ -12,7 +12,7 @@
     RootModule        = 'PSSnow.MidTools.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '0.0.2'
+    ModuleVersion     = '0.0.3'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -124,7 +124,9 @@
         "Set-SNOWMidUserCertificate",
         "Set-SNOWMidRootCertificate",
         "Set-SNOWMidServerCertificate",
-        "Resolve-SNOWMidAzCertificate"
+        "Resolve-SNOWMidAzCertificate",
+        "Set-SNOWMidMutualAuthRoot",
+        "Get-SNOWMidMutualAuthState"
     )
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

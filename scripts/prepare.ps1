@@ -3,7 +3,8 @@ Param(
     [string]$MidServerCluster = $env:MID_SERVER_CLUSTER,
     [string]$RootCACommonName = $env:MID_SERVER_ROOT_CA ?? 'az-mid-ca',
     [string]$MidCertCommonName = $env:MID_SERVER_NAME,
-    [System.Boolean]$UseCertificates = $env:SN_MID_USE_CERTIFICATES -eq 'true'
+    [System.Boolean]$UseCertificates = $env:SN_MID_USE_CERTIFICATES -eq 'true',
+    [string[]]$MidServerGroups = $env:MID_SERVER_GROUPS ? $env:MID_SERVER_GROUPS -split ',' : $null
 )
 Resolve-SNOWMIDPrereqs
 $DeploymentScriptOutputs.EntryPoint = @('/opt/snc_mid_server/init')
@@ -39,15 +40,61 @@ if ($UseCertificates) {
         '-c'
         'echo $MID_SERVER_PEM_BASE64 | base64 -d > /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/agent && sh bin/scripts/manage-certificates.sh -a DefaultSecurityKeyPairHandle /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/; ./init setup -f; ./init start'
     )
+    
 }
 $SnowConn = Resolve-SNOWMIDEnvironmentAuth
 $DeploymentScriptOutputs.EnvVars.MID_CONFIG_mid__pinned__version = (Get-SNOWMidVersion)
 $BuildResults = Build-SNOWMidImage -Verbose
 $DeploymentScriptOutputs.ImageState = Resolve-SNOWMIDImageState
 $DeploymentScriptOutputs.Image = $DeploymentScriptOutputs.ImageState.CustomImageUri
-$UserResult = Set-SNOWMIDServerUser -MidServerName $MidServerName -MidServerCluster $MidServerCluster
+$UserParams = @{
+    MidServerName    = $MidServerName
+    MidServerCluster = $MidServerCluster
+    Roles            = @('mid_server')
+    Groups           = $MidServerGroups
+    Capabilities     = @('ALL')
+    Operation        = 'deploy'
+}
+$UserResult = Set-SNOWMIDServerUser @UserParams
 $DeploymentScriptOutputs.EnvVars.MID_INSTANCE_USERNAME = $UserResult.Credentials.UserName
 $DeploymentScriptOutputs.SecretEnvVars.MID_INSTANCE_PASSWORD = $UserResult.VaultSecret
+if ($UseCertificates -and $UserResult.User.user_name -and $MidCert) {
+    $MutualAuthEnabled = Get-SNOWMidMutualAuthState -RootCN $RootCACommonName
+    if ($MutualAuthEnabled.Valid) {
+        Write-PSFMessage "Mutual Auth is available for instance root CA $RootCACommonName"
+        try {
+            $TempFile = New-TemporaryFile
+            $TempFilePath = $TempFile.FullName
+            if ($PemContent = $MidCert.Collection.ExportCertificatePems()) {
+                $PemContent | Out-File -FilePath $TempFilePath -Encoding ascii
+                Set-SNOWMidUserCertificate -UserName $UserResult.User.user_name -CertificatePemPath $TempFilePath -CertificateName $MidCertCommonName -ErrorAction Stop
+                Write-PSFMessage "Mutual authentication enabled for user $($UserResult.User.user_name) with certificate $MidCertCommonName."
+                $DeploymentScriptOutputs.EnvVars.MID_MUTUAL_AUTH_PEM_FILE = '/opt/snc_mid_server/current_cert.pem'
+                $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')
+                $DeploymentScriptOutputs.SecretEnvVars.Remove('MID_INSTANCE_PASSWORD')
+                $DeploymentScriptOutputs.Cmd = @(
+                    '-c'
+                    'echo $MID_SERVER_PEM_BASE64 | base64 -d > $MID_MUTUAL_AUTH_PEM_FILE; /opt/snc_mid_server/init start'
+                )
+            }
+        }
+        catch {
+            Write-PSFMessage -Level Warning "Failed to enable Mutual Auth for MID Server ${MidServerName}: $_"
+        
+        }
+        finally {
+            if (Test-Path $TempFilePath) {
+                Remove-Item -Path $TempFilePath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        
+    }
+    else {
+        Write-PSFMessage "Enabling Mutual Auth for MID Server $MidServerName"
+        # Enable-SNOWMidUserMutualAuth -RootCN $RootCACommonName -MidServerName $MidServerName -ErrorAction Stop
+    }
+}
+
 $DeploymentScriptOutputs['sysauto_script'] = try {
     Start-SNOWMIDValidationScript -MidServerName $MidServerName -ErrorAction Stop
 }
