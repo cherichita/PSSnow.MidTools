@@ -9,6 +9,7 @@ param midServerName string
 
 @description('The MID Server username. Must exist, and have the mid_server role')
 param midInstanceUsername string
+
 @secure()
 param midInstancePassword string
 
@@ -29,6 +30,9 @@ param memoryInGB int = 4
 
 @description('Whether to use certificates for MID Server authentication. If true, a root CA and server certificate will be created in Key Vault.')
 param useCertificates bool = true
+
+@description('Mutual auth enabled? If true, the MID Server will be configured to use mutual authentication with the instance.')
+param mutualAuthEnabled bool = false
 
 @secure()
 param midServerCertificatePemBase64 string = ''
@@ -133,10 +137,7 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
                 name: 'MID_INSTANCE_USERNAME'
                 value: midInstanceUsername
               }
-              {
-                name: 'MID_INSTANCE_PASSWORD'
-                secureValue: midInstancePassword
-              }
+
               {
                 name: 'MID_CONFIG_azure__client__id'
                 value: userAssignedIdentity.properties.principalId
@@ -154,6 +155,19 @@ resource containerGroup 'Microsoft.ContainerInstance/containerGroups@2023-05-01'
                 secureValue: useCertificates ? midServerCertificatePemBase64 : ''
               }
             ],
+            mutualAuthEnabled
+              ? [
+                  {
+                    name: 'MID_MUTUAL_AUTH_PEM_FILE'
+                    value: '/opt/snc_mid_server/current_cert.pem'
+                  }
+                ]
+              : [
+                  {
+                    name: 'MID_INSTANCE_PASSWORD'
+                    secureValue: midInstancePassword
+                  }
+                ],
             additionalEnvironmentVariables
           )
           volumeMounts: !useCertificates

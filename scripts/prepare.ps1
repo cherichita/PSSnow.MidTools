@@ -72,6 +72,7 @@ if ($UseCertificates -and $UserResult.User.user_name -and $MidCert) {
                 $DeploymentScriptOutputs.EnvVars.MID_MUTUAL_AUTH_PEM_FILE = '/opt/snc_mid_server/current_cert.pem'
                 $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')
                 $DeploymentScriptOutputs.SecretEnvVars.Remove('MID_INSTANCE_PASSWORD')
+                $DeploymentScriptOutputs.MutualAuthEnabled = $true
                 $DeploymentScriptOutputs.Cmd = @(
                     '-c'
                     'echo $MID_SERVER_PEM_BASE64 | base64 -d > $MID_MUTUAL_AUTH_PEM_FILE; /opt/snc_mid_server/init start'

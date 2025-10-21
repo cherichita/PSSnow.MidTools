@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "3906720901785192236"
+      "templateHash": "8012125906933234139"
     }
   },
   "parameters": {
@@ -78,6 +78,7 @@
     }
   },
   "variables": {
+    "$fxv#0": "Param(\r\n    [string]$MidServerName = $env:MID_SERVER_NAME,\r\n    [string]$MidServerCluster = $env:MID_SERVER_CLUSTER,\r\n    [string]$RootCACommonName = $env:MID_SERVER_ROOT_CA ?? 'az-mid-ca',\r\n    [string]$MidCertCommonName = $env:MID_SERVER_NAME,\r\n    [System.Boolean]$UseCertificates = $env:SN_MID_USE_CERTIFICATES -eq 'true',\r\n    [string[]]$MidServerGroups = $env:MID_SERVER_GROUPS ? $env:MID_SERVER_GROUPS -split ',' : $null\r\n)\r\nResolve-SNOWMIDPrereqs\r\n$DeploymentScriptOutputs.EntryPoint = @('/opt/snc_mid_server/init')\r\n$DeploymentScriptOutputs.Cmd = @('start')\r\n$DeploymentScriptOutputs.EnvVars = @{\r\n    MID_SERVER_NAME         = $MidServerName\r\n    MID_SERVER_CLUSTER      = $MidServerCluster\r\n    SN_MID_ENVIRONMENT_NAME = $env:SN_MID_ENVIRONMENT_NAME\r\n    SN_MID_CONTEXT          = 'azure'\r\n    SN_MID_BUILD_STRATEGY   = 'acr'\r\n}\r\n$DeploymentScriptOutputs.SecretEnvVars = @{}\r\nConnect-SNOWMIDAzureFromEnvironment | Out-Null\r\nif ($ctx = Resolve-SNOWMIDBuildContext) {\r\n    $DeploymentScriptOutputs.BuildContext = $ctx\r\n    $DeploymentScriptOutputs.VaultName = $ctx.Vault.VaultName\r\n    $DeploymentScriptOutputs.EnvVars += @{\r\n        MID_INSTANCE_URL                        = \"$($ctx.StorageAccount.tags.SnowHost)\"\r\n        MID_WRAPPER_wrapper__java__classpath__1 = 'extlib/*.jar'\r\n        MID_WRAPPER_wrapper__java__classpath__2 = 'lib/*.jar'\r\n    }\r\n}\r\nelse {\r\n    throw \"Failed to resolve build context for environment $($env:SN_MID_ENVIRONMENT_NAME). Ensure the environment name is correct and that you have access to it.\"\r\n}\r\nif ($UseCertificates) {\r\n    $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCACommonName -ErrorAction Stop\r\n    $MidCert = Set-SNOWMidServerCertificate -VaultName $ctx.Vault.VaultName -LeafCN $MidCertCommonName -Signer $RootCA.Collection[0] -ErrorAction Stop\r\n    $DeploymentScriptOutputs.MidCert = $MidCert\r\n    $DeploymentScriptOutputs.SecretEnvVars.MID_SERVER_PEM_BASE64 = $MidCert.PemSecret.Name\r\n    $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')\r\n    $DeploymentScriptOutputs.Cmd = @(\r\n        '-c'\r\n        'echo $MID_SERVER_PEM_BASE64 | base64 -d > /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/agent && sh bin/scripts/manage-certificates.sh -a DefaultSecurityKeyPairHandle /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/; ./init setup -f; ./init start'\r\n    )\r\n    \r\n}\r\n$SnowConn = Resolve-SNOWMIDEnvironmentAuth\r\n$DeploymentScriptOutputs.EnvVars.MID_CONFIG_mid__pinned__version = (Get-SNOWMidVersion)\r\n$BuildResults = Build-SNOWMidImage -Verbose\r\n$DeploymentScriptOutputs.ImageState = Resolve-SNOWMIDImageState\r\n$DeploymentScriptOutputs.Image = $DeploymentScriptOutputs.ImageState.CustomImageUri\r\n$UserParams = @{\r\n    MidServerName    = $MidServerName\r\n    MidServerCluster = $MidServerCluster\r\n    Roles            = @('mid_server')\r\n    Groups           = $MidServerGroups\r\n    Capabilities     = @('ALL')\r\n    Operation        = 'deploy'\r\n}\r\n$UserResult = Set-SNOWMIDServerUser @UserParams\r\n$DeploymentScriptOutputs.EnvVars.MID_INSTANCE_USERNAME = $UserResult.Credentials.UserName\r\n$DeploymentScriptOutputs.SecretEnvVars.MID_INSTANCE_PASSWORD = $UserResult.VaultSecret\r\nif ($UseCertificates -and $UserResult.User.user_name -and $MidCert) {\r\n    $MutualAuthEnabled = Get-SNOWMidMutualAuthState -RootCN $RootCACommonName\r\n    if ($MutualAuthEnabled.Valid) {\r\n        Write-PSFMessage \"Mutual Auth is available for instance root CA $RootCACommonName\"\r\n        try {\r\n            $TempFile = New-TemporaryFile\r\n            $TempFilePath = $TempFile.FullName\r\n            if ($PemContent = $MidCert.Collection.ExportCertificatePems()) {\r\n                $PemContent | Out-File -FilePath $TempFilePath -Encoding ascii\r\n                Set-SNOWMidUserCertificate -UserName $UserResult.User.user_name -CertificatePemPath $TempFilePath -CertificateName $MidCertCommonName -ErrorAction Stop\r\n                Write-PSFMessage \"Mutual authentication enabled for user $($UserResult.User.user_name) with certificate $MidCertCommonName.\"\r\n                $DeploymentScriptOutputs.EnvVars.MID_MUTUAL_AUTH_PEM_FILE = '/opt/snc_mid_server/current_cert.pem'\r\n                $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')\r\n                $DeploymentScriptOutputs.SecretEnvVars.Remove('MID_INSTANCE_PASSWORD')\r\n                $DeploymentScriptOutputs.MutualAuthEnabled = $true\r\n                $DeploymentScriptOutputs.Cmd = @(\r\n                    '-c'\r\n                    'echo $MID_SERVER_PEM_BASE64 | base64 -d > $MID_MUTUAL_AUTH_PEM_FILE; /opt/snc_mid_server/init start'\r\n                )\r\n            }\r\n        }\r\n        catch {\r\n            Write-PSFMessage -Level Warning \"Failed to enable Mutual Auth for MID Server ${MidServerName}: $_\"\r\n        \r\n        }\r\n        finally {\r\n            if (Test-Path $TempFilePath) {\r\n                Remove-Item -Path $TempFilePath -Force -ErrorAction SilentlyContinue\r\n            }\r\n        }\r\n        \r\n    }\r\n    else {\r\n        Write-PSFMessage \"Enabling Mutual Auth for MID Server $MidServerName\"\r\n        # Enable-SNOWMidUserMutualAuth -RootCN $RootCACommonName -MidServerName $MidServerName -ErrorAction Stop\r\n    }\r\n}\r\n\r\n$DeploymentScriptOutputs['sysauto_script'] = try {\r\n    Start-SNOWMIDValidationScript -MidServerName $MidServerName -ErrorAction Stop\r\n}\r\ncatch {\r\n    \"Error: $_\"\r\n}\r\nWrite-PSFMessage \"Deployment Script complete for MID Server $MidServerName\"",
     "storageAccountName": "[format('snst{0}{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]",
     "keyVaultName": "[format('snkv-{0}-{1}', parameters('devopsEnvironmentName'), uniqueString(resourceGroup().id))]"
   },
@@ -85,7 +86,7 @@
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2022-09-01",
-      "name": "[format('GetBuildContext-{0}', parameters('midServerName'))]",
+      "name": "[format('snow-get-midcontext-{0}', parameters('midServerName'))]",
       "properties": {
         "expressionEvaluationOptions": {
           "scope": "inner"
@@ -93,7 +94,7 @@
         "mode": "Incremental",
         "parameters": {
           "deploymentScriptName": {
-            "value": "[format('SnowMidTools-{0}', parameters('midServerName'))]"
+            "value": "[format('snow-prepare-midserver-{0}', parameters('midServerName'))]"
           },
           "userAssignedIdentityName": {
             "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowDevopsIdentity]"
@@ -101,7 +102,7 @@
           "midToolsRemoteUriBase": "[if(empty(parameters('midToolsRemoteUriBase')), createObject('value', null()), createObject('value', parameters('midToolsRemoteUriBase')))]",
           "midToolsRemoteUriSas": "[if(empty(parameters('midToolsRemoteUriSas')), createObject('value', null()), createObject('value', parameters('midToolsRemoteUriSas')))]",
           "inlineScript": {
-            "value": "      Param(\r\n          [string]$MidServerName = $env:MID_SERVER_NAME,\r\n          [string]$MidServerCluster = $env:MID_SERVER_CLUSTER,\r\n          [string]$RootCACommonName = $env:MID_SERVER_ROOT_CA ?? 'az-mid-ca',\r\n          [string]$MidCertCommonName = $env:MID_SERVER_NAME,\r\n          [System.Boolean]$UseCertificates = $env:SN_MID_USE_CERTIFICATES -eq 'true'\r\n      )\r\n      Resolve-SNOWMIDPrereqs\r\n      $DeploymentScriptOutputs.EntryPoint = @('/opt/snc_mid_server/init')\r\n      $DeploymentScriptOutputs.Cmd = @('start')\r\n      $DeploymentScriptOutputs.EnvVars = @{\r\n          MID_SERVER_NAME         = $MidServerName\r\n          MID_SERVER_CLUSTER      = $MidServerCluster\r\n          SN_MID_ENVIRONMENT_NAME = $env:SN_MID_ENVIRONMENT_NAME\r\n          SN_MID_CONTEXT          = 'azure'\r\n          SN_MID_BUILD_STRATEGY   = 'acr'\r\n      }\r\n      $DeploymentScriptOutputs.SecretEnvVars = @{}\r\n      Connect-SNOWMIDAzureFromEnvironment | Out-Null\r\n      if ($ctx = Resolve-SNOWMIDBuildContext) {\r\n          $DeploymentScriptOutputs.BuildContext = $ctx\r\n          $DeploymentScriptOutputs.VaultName = $ctx.Vault.VaultName\r\n          $DeploymentScriptOutputs.EnvVars += @{\r\n              MID_INSTANCE_URL = \"$($ctx.StorageAccount.tags.SnowHost)\"\r\n              MID_WRAPPER_wrapper__java__classpath__1 = 'extlib/*.jar'\r\n              MID_WRAPPER_wrapper__java__classpath__2 = 'lib/*.jar'\r\n          }\r\n      }\r\n      else {\r\n          throw \"Failed to resolve build context for environment $($env:SN_MID_ENVIRONMENT_NAME). Ensure the environment name is correct and that you have access to it.\"\r\n      }\r\n      if ($UseCertificates) {\r\n          $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCACommonName -ErrorAction Stop\r\n          $MidCert = Set-SNOWMidServerCertificate -VaultName $ctx.Vault.VaultName -LeafCN $MidCertCommonName -Signer $RootCA.Collection[0] -ErrorAction Stop\r\n          $DeploymentScriptOutputs.MidCert = $MidCert\r\n          $DeploymentScriptOutputs.SecretEnvVars.MID_SERVER_PEM_BASE64 = $MidCert.PemSecret.Name\r\n          $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')\r\n          $DeploymentScriptOutputs.Cmd = @(\r\n              '-c'\r\n              'echo $MID_SERVER_PEM_BASE64 | base64 -d > /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/agent && sh bin/scripts/manage-certificates.sh -a DefaultSecurityKeyPairHandle /opt/snc_mid_server/current_cert.pem; cd /opt/snc_mid_server/; ./init setup -f; ./init start'\r\n          )\r\n      }\r\n      $SnowConn = Resolve-SNOWMIDEnvironmentAuth -SkipTagUpdate\r\n      $DeploymentScriptOutputs.EnvVars.MID_CONFIG_mid__pinned__version = (Get-SNOWMidVersion)\r\n      $BuildResults = Build-SNOWMidImage -Verbose\r\n      $DeploymentScriptOutputs.ImageState = Resolve-SNOWMIDImageState\r\n      $DeploymentScriptOutputs.Image = $DeploymentScriptOutputs.ImageState.CustomImageUri\r\n      $UserResult = Set-SNOWMIDServerUser -MidServerName $MidServerName -MidServerCluster $MidServerCluster\r\n      $DeploymentScriptOutputs.EnvVars.MID_INSTANCE_USERNAME = $UserResult.Credentials.UserName\r\n      $DeploymentScriptOutputs.SecretEnvVars.MID_INSTANCE_PASSWORD = $UserResult.VaultSecret\r\n      $DeploymentScriptOutputs['sysauto_script'] = try {\r\n          Start-SNOWMIDValidationScript -MidServerName $MidServerName -ErrorAction Stop\r\n      }\r\n      catch {\r\n          \"Error: $_\"\r\n      }\r\n      Write-PSFMessage \"Deployment Script complete for MID Server $MidServerName\"\r\n"
+            "value": "[variables('$fxv#0')]"
           },
           "devopsEnvironmentName": {
             "value": "[parameters('devopsEnvironmentName')]"
@@ -294,22 +295,15 @@
             "value": "[resourceGroup().location]"
           },
           "midServerName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_SERVER_NAME]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_SERVER_NAME]"
           },
           "midInstanceUrl": {
             "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowHost]"
           },
           "midInstanceUsername": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_INSTANCE_USERNAME]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EnvVars.MID_INSTANCE_USERNAME]"
           },
-          "midInstancePassword": {
-            "reference": {
-              "keyVault": {
-                "id": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
-              },
-              "secretName": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_INSTANCE_PASSWORD]"
-            }
-          },
+          "midInstancePassword": "[if(reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.MutualAuthEnabled, createObject('value', ''), createObject('reference', createObject('keyVault', createObject('id', resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))), 'secretName', reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_INSTANCE_PASSWORD)))]",
           "containerRegistryId": {
             "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowContainerRegistryId]"
           },
@@ -317,7 +311,7 @@
             "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowContainerSubnetId]"
           },
           "imagePath": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Image]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Image]"
           },
           "storageAccountName": {
             "value": "[variables('storageAccountName')]"
@@ -331,9 +325,12 @@
           "useCertificates": {
             "value": "[parameters('useCertificates')]"
           },
-          "midServerCertificatePemBase64": "[if(parameters('useCertificates'), createObject('reference', createObject('keyVault', createObject('id', resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))), 'secretName', reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_SERVER_PEM_BASE64)), createObject('value', ''))]",
+          "mutualAuthEnabled": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.MutualAuthEnabled]"
+          },
+          "midServerCertificatePemBase64": "[if(parameters('useCertificates'), createObject('reference', createObject('keyVault', createObject('id', resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))), 'secretName', reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.SecretEnvVars.MID_SERVER_PEM_BASE64)), createObject('value', ''))]",
           "command": {
-            "value": "[union(reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EntryPoint, reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Cmd)]"
+            "value": "[union(reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.EntryPoint, reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.Cmd)]"
           },
           "additionalEnvironmentVariables": {
             "value": [
@@ -359,7 +356,7 @@
               },
               {
                 "name": "MID_CONFIG_mid__pinned__version",
-                "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.ImageState.MidVersion]"
+                "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs.scriptOutput.value.ImageState.MidVersion]"
               }
             ]
           },
@@ -375,7 +372,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.37.4.10188",
-              "templateHash": "14307410009426116882"
+              "templateHash": "16051027813000215706"
             }
           },
           "functions": [
@@ -473,6 +470,13 @@
               "defaultValue": true,
               "metadata": {
                 "description": "Whether to use certificates for MID Server authentication. If true, a root CA and server certificate will be created in Key Vault."
+              }
+            },
+            "mutualAuthEnabled": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Mutual auth enabled? If true, the MID Server will be configured to use mutual authentication with the instance."
               }
             },
             "midServerCertificatePemBase64": {
@@ -589,7 +593,7 @@
                         }
                       },
                       "command": "[parameters('command')]",
-                      "environmentVariables": "[union(createArray(createObject('name', 'HOSTNAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_URL', 'value', parameters('midInstanceUrl')), createObject('name', 'MID_SERVER_NAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_USERNAME', 'value', parameters('midInstanceUsername')), createObject('name', 'MID_INSTANCE_PASSWORD', 'secureValue', parameters('midInstancePassword')), createObject('name', 'MID_CONFIG_azure__client__id', 'value', reference('userAssignedIdentity').principalId), createObject('name', 'MID_CONFIG_mid__ssl__bootstrap__default__check_cert_hostname', 'value', 'false'), createObject('name', 'MID_CUSTOM_PEM_FILE', 'value', '/opt/snc_mid_server/current_cert.pem'), createObject('name', 'MID_SERVER_PEM_BASE64', 'secureValue', if(parameters('useCertificates'), parameters('midServerCertificatePemBase64'), ''))), parameters('additionalEnvironmentVariables'))]",
+                      "environmentVariables": "[union(createArray(createObject('name', 'HOSTNAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_URL', 'value', parameters('midInstanceUrl')), createObject('name', 'MID_SERVER_NAME', 'value', parameters('midServerName')), createObject('name', 'MID_INSTANCE_USERNAME', 'value', parameters('midInstanceUsername')), createObject('name', 'MID_CONFIG_azure__client__id', 'value', reference('userAssignedIdentity').principalId), createObject('name', 'MID_CONFIG_mid__ssl__bootstrap__default__check_cert_hostname', 'value', 'false'), createObject('name', 'MID_CUSTOM_PEM_FILE', 'value', '/opt/snc_mid_server/current_cert.pem'), createObject('name', 'MID_SERVER_PEM_BASE64', 'secureValue', if(parameters('useCertificates'), parameters('midServerCertificatePemBase64'), ''))), if(parameters('mutualAuthEnabled'), createArray(createObject('name', 'MID_MUTUAL_AUTH_PEM_FILE', 'value', '/opt/snc_mid_server/current_cert.pem')), createArray(createObject('name', 'MID_INSTANCE_PASSWORD', 'secureValue', parameters('midInstancePassword')))), parameters('additionalEnvironmentVariables'))]",
                       "volumeMounts": "[if(not(parameters('useCertificates')), createArray(createObject('name', 'midserver', 'mountPath', '/opt/snc_mid_server/mid_container'), createObject('name', 'keystore', 'mountPath', '/opt/snc_mid_server/agent/security')), createArray())]"
                     }
                   }
@@ -628,7 +632,7 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName')))]"
+        "[resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName')))]"
       ]
     }
   ],
@@ -639,7 +643,7 @@
     },
     "scriptOutputs": {
       "type": "object",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('GetBuildContext-{0}', parameters('midServerName'))), '2022-09-01').outputs]"
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', format('snow-get-midcontext-{0}', parameters('midServerName'))), '2022-09-01').outputs]"
     }
   }
 }
