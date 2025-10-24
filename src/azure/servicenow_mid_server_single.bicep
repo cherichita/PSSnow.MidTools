@@ -163,7 +163,12 @@ module midServerDeployment 'modules/snow.midcontainer.bicep' = {
         value: GetBuildContext.outputs.scriptOutput.ImageState.MidVersion
       }
     ]
-    tags: storageAccount.tags
+    tags: {
+      SnowEnvironment: devopsEnvironmentName
+      SnowMidServer: midServerName
+      SnowMidServerCluster: midServerCluster
+      SnowHost: storageAccount.tags.SnowHost
+    }
   }
 }
 

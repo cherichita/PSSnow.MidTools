@@ -86,6 +86,8 @@ type roleDefinition = {
 @description('Must contain roleDefinitionId, principalId, and principalType. This is used to assign additional roles to the resource group.')
 param additionalResourceGroupRoleAssignments array = []
 
+var varContainerSubnetId = containerSubnetId != '' ? containerSubnetId : resourceId(subscription().subscriptionId, networkResourceGroupName, 'Microsoft.Network/virtualNetworks/subnets', vnetName, subnetName)
+
 module aciNetwork './network/default.virtualnetwork.bicep' = if (deployNetwork) {
   name: 'ServiceNow-MID-ACI-Network'
   scope: subscription()
@@ -113,7 +115,7 @@ module midEnvironment './azure_servicenow_mid_acs_base.bicep' = {
     deployCredentials: deployCredentials
     snowCredentials: snowCredentials
     snowCredentialsJson: snowCredentialsJson
-    containerSubnetId: deployNetwork ? aciNetwork!.outputs.subnetId : containerSubnetId
+    containerSubnetId: varContainerSubnetId
     additionalStorageSubnetIds: additionalStorageSubnetIds
     virtualNetworkRoleId: virtualNetworkRoleId
     containerRegistrySubscription: containerRegistrySubscription

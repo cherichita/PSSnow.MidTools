@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "8012125906933234139"
+      "templateHash": "10521776653819560637"
     }
   },
   "parameters": {
@@ -361,7 +361,12 @@
             ]
           },
           "tags": {
-            "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags]"
+            "value": {
+              "SnowEnvironment": "[parameters('devopsEnvironmentName')]",
+              "SnowMidServer": "[parameters('midServerName')]",
+              "SnowMidServerCluster": "[parameters('midServerCluster')]",
+              "SnowHost": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-01-01', 'full').tags.SnowHost]"
+            }
           }
         },
         "template": {

@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.37.4.10188",
-      "templateHash": "10333533243455504449"
+      "templateHash": "3095063741134956441"
     }
   },
   "definitions": {
@@ -186,6 +186,9 @@
         "description": "Must contain roleDefinitionId, principalId, and principalType. This is used to assign additional roles to the resource group."
       }
     }
+  },
+  "variables": {
+    "varContainerSubnetId": "[if(not(equals(parameters('containerSubnetId'), '')), parameters('containerSubnetId'), resourceId(subscription().subscriptionId, parameters('networkResourceGroupName'), 'Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName')))]"
   },
   "resources": {
     "aciNetwork": {
@@ -833,7 +836,9 @@
           "snowCredentialsJson": {
             "value": "[parameters('snowCredentialsJson')]"
           },
-          "containerSubnetId": "[if(parameters('deployNetwork'), createObject('value', reference('aciNetwork').outputs.subnetId.value), createObject('value', parameters('containerSubnetId')))]",
+          "containerSubnetId": {
+            "value": "[variables('varContainerSubnetId')]"
+          },
           "additionalStorageSubnetIds": {
             "value": "[parameters('additionalStorageSubnetIds')]"
           },
@@ -3765,10 +3770,7 @@
             }
           }
         }
-      },
-      "dependsOn": [
-        "aciNetwork"
-      ]
+      }
     }
   }
 }
