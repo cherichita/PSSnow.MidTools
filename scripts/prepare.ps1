@@ -7,6 +7,7 @@ Param(
     [string[]]$MidServerGroups = $env:MID_SERVER_GROUPS ? $env:MID_SERVER_GROUPS -split ',' : $null
 )
 Resolve-SNOWMIDPrereqs
+$DeploymentScriptOutputs.MutualAuthEnabled = $false
 $DeploymentScriptOutputs.EntryPoint = @('/opt/snc_mid_server/init')
 $DeploymentScriptOutputs.Cmd = @('start')
 $DeploymentScriptOutputs.EnvVars = @{
