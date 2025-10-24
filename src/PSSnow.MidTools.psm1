@@ -270,12 +270,11 @@ function Resolve-SNOWMIDCustomResources {
     }
     else {
         $Outputs.SubscriptionName = (Get-AzSubscription -SubscriptionId $Outputs.StorageAccount.subscriptionId -ErrorAction SilentlyContinue).Name
-        $Outputs.SubscriptionId = $Outputs.StorageAccount.subscriptionId
-            
         if ($Outputs.SubscriptionId -ne $Outputs.StorageAccount.subscriptionId) {
             Write-PSFMessage -Level Warning "Storage Account $($Outputs.StorageAccount.name) is in subscription $($Outputs.StorageAccount.subscriptionId), but current subscription is $($Outputs.SubscriptionId). Updating SubscriptionId to match Storage Account."
-            Set-AzContext -SubscriptionId $Outputs.SubscriptionId | Out-Null
+            Set-AzContext -SubscriptionId $Outputs.StorageAccount.subscriptionId -Scope Process | Out-Null
         }
+        $Outputs.SubscriptionId = $Outputs.StorageAccount.subscriptionId
         $Outputs.ResourceGroup = $Outputs.StorageAccount.resourceGroup
         $ContainerRegistryId = $Outputs.StorageAccount.tags.SnowContainerRegistryId
         $Outputs += @{
