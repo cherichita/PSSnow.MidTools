@@ -99,6 +99,8 @@
         "Remove-SNOWMIDServerDeployment",
         "Resolve-SNOWMIDAcrImageState",
         "Resolve-SNOWMIDAzureCli",
+        "Get-SNOWMidAzureEnvironmentSecret",
+        "Test-SNOWMidAzureEnvironmentSecret",
         "Resolve-SNOWMidAzureEnvironmentSecrets",
         "Resolve-SNOWMIDBuildContext",
         "Resolve-SNOWMIDCustomResources",

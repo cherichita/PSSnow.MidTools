@@ -29,9 +29,9 @@ task AzResolveContext {
     $SettingsState.Status = if ($SettingsState.Values -notcontains 'Missing' -and $SettingsState.Values -notcontains 'Mismatch (Expected:') { 'OK' } else { 'Error' }
     Write-Build Blue "Settings state: $($SettingsState | ConvertTo-Json -Depth 5)"
     $AzCtx = Get-AzContext -ErrorAction SilentlyContinue
-    if(Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
+    if (Get-Command -Name 'az' -ErrorAction SilentlyContinue) {
         $AzCliCtx = az account show --output json | ConvertFrom-Json
-        if(-not $AzCliCtx -or $AzCliCtx.id -ne $Script:AzureSettings.subscription_id) {
+        if (-not $AzCliCtx -or $AzCliCtx.id -ne $Script:AzureSettings.subscription_id) {
             az account set --subscription $Script:AzureSettings.subscription_id | Out-Null
         }
         else {
@@ -87,13 +87,13 @@ task AzDeployServicePrincipalSecret AzResolveContext, {
         Write-Host "New secret created: $($NewSecret.SecretText.Substring(0, 10)).... Sleeping for 20 seconds to allow Azure to propagate the secret."
         Start-Sleep -Seconds 20
         $ServicePrincipalConfig = @{
-            ClientSecret         = ($NewSecret.SecretText | ConvertTo-SecureString -AsPlainText -Force)
-            TenantId             = $AzContext.Tenant.Id
-            SubscriptionId       = $AzContext.Subscription.Id
-            ClientId             = $AzureApp.AppId
-            PrincipalId          = $AzureSP.Id
-            AzureEnvironmentName = "AzureCloud"
-            Metadata             = @{}
+            ClientSecret    = ($NewSecret.SecretText | ConvertTo-SecureString -AsPlainText -Force)
+            TenantId        = $AzContext.Tenant.Id
+            SubscriptionId  = $AzContext.Subscription.Id
+            ClientId        = $AzureApp.AppId
+            PrincipalId     = $AzureSP.Id
+            EnvironmentName = "AzureCloud"
+            Metadata        = @{}
         }
         Set-SNOWMidAzureEnvironmentSecret @ServicePrincipalConfig
     }

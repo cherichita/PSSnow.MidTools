@@ -1981,6 +1981,46 @@ function Resolve-SNOWMIDEnvironmentAuth {
     }
 }
 
+function Test-SNOWMidAzureEnvironmentSecret {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$TenantId,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$SubscriptionId,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ClientId,
+
+        [Parameter(Mandatory = $true)]
+        [securestring]$ClientSecret,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$EnvironmentName = 'AzureCloud'
+    )
+    process {
+        try {
+            $CurrentContext = Get-AzContext -ErrorAction SilentlyContinue
+            $context = Connect-AzAccount -Tenant $TenantId -Subscription $SubscriptionId `
+                -Credential (New-Object PSCredential($ClientId, $ClientSecret)) -Environment $EnvironmentName `
+                -ServicePrincipal -ErrorAction Stop -Scope Process
+            Write-PSFMessage -Level Important "Successfully connected to Azure Subscription '$SubscriptionId' in Tenant '$TenantId' using Client ID '$ClientId'."
+            # Disconnect if the connection was successful
+            Disconnect-AzAccount -Scope Process -ErrorAction SilentlyContinue  | Out-Null
+            return $true
+        }
+        catch {
+            Write-PSFMessage -Level Warning "Could not verify Azure credentials: $_"
+            return $false
+        }finally{
+            if ($CurrentContext) {
+                Set-AzContext -Context $CurrentContext -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+    }
+}
+
 function Set-SNOWMidAzureEnvironmentSecret {
     [CmdletBinding()]
     param (
@@ -2006,7 +2046,7 @@ function Set-SNOWMidAzureEnvironmentSecret {
         [hashtable]$Metadata = @{},
         
         [Parameter(Mandatory = $false)]
-        [string]$AzureEnvironmentName = 'AzureCloud',
+        [string]$EnvironmentName = 'AzureCloud',
         
         [Parameter(Mandatory = $false)]
         [string]$SecretName = $Script:AZ_CONNECTION_SECRET_NAME,
@@ -2021,7 +2061,7 @@ function Set-SNOWMidAzureEnvironmentSecret {
             ClientId        = $ClientId
             PrincipalId     = $PrincipalId
             ClientSecret    = ($ClientSecret | ConvertFrom-SecureString -AsPlainText)
-            EnvironmentName = $AzureEnvironmentName
+            EnvironmentName = $EnvironmentName
             Metadata        = $Metadata
         }
         
@@ -2029,20 +2069,32 @@ function Set-SNOWMidAzureEnvironmentSecret {
             $SecretValue.Certificate = @($Certificate.ExportCertificatePem(), $Certificate.PrivateKey.ExportPkcs8PrivateKeyPem()) -join "`n"
         }
         
-        # Verify the credentials are valid if possible
-        try {
-            $context = Connect-AzAccount -Tenant $TenantId -Subscription $SubscriptionId `
-                -Credential (New-Object PSCredential($ClientId, $ClientSecret)) -Environment $AzureEnvironmentName `
-                -ServicePrincipal -ErrorAction Stop -Scope Process
-            # Disconnect if the connection was successful
-            Disconnect-AzAccount -Scope Process -ErrorAction SilentlyContinue 
-        }
-        catch {
-            Write-PSFMessage -Level Warning "Could not verify Azure credentials: $_"
-            # Continue anyway - the secret will still be stored
+        $CredentialsValid = Test-SNOWMidAzureEnvironmentSecret -TenantId $TenantId -SubscriptionId $SubscriptionId `
+            -ClientId $ClientId -ClientSecret $ClientSecret -EnvironmentName $EnvironmentName
+        if (-not $CredentialsValid) {
+            Write-PSFMessage -Level Warning "Azure credentials validation failed. Secret will not be stored."
+            return
+        }else{
+            Set-JsonSecret -SecretValue $SecretValue -SecretName $SecretName -VaultName $VaultName
         }
         
-        Set-JsonSecret -SecretValue $SecretValue -SecretName $SecretName -VaultName $VaultName
+    }
+}
+
+function Get-SNOWMidAzureEnvironmentSecret {
+    param(
+        [string]$SecretName = $Script:AZ_CONNECTION_SECRET_NAME,
+        [string]$VaultName = $Script:SN_MID_VAULT_NAME,
+        [switch]$Raw
+    )
+    $Secret = Get-JsonSecret -SecretName $SecretName -VaultName $VaultName `
+        -ErrorAction SilentlyContinue -Raw:$Raw
+    return [hashtable]@{
+        TenantId        = $Secret.TenantId
+        SubscriptionId  = $Secret.SubscriptionId
+        ClientId        = $Secret.ClientID
+        ClientSecret    = $Secret.ClientSecret
+        EnvironmentName = $Secret.EnvironmentName
     }
 }
 
@@ -2054,7 +2106,7 @@ function Resolve-SNOWMidAzureEnvironmentSecrets {
         [switch]$SetEnvironmentVariables
     )
     process {
-        $SecretValue = Get-JsonSecret -SecretName $SecretName -VaultName $VaultName
+        $SecretValue = Get-JsonSecret Get-JsonSecret -Secret $SecretName -VaultName $VaultName
         $EnvVars = [ordered]@{
             AZURE_TENANT_ID        = $SecretValue.TenantId
             AZURE_SUBSCRIPTION_ID  = $SecretValue.SubscriptionId
