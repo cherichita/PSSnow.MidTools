@@ -1915,9 +1915,10 @@ function Resolve-SNOWMIDEnvironmentAuth {
                         $TokenUpdated = ($TokenUpdated -or ($TimeDelta -gt 60) -or ($TimeDelta -lt -60))
                         Write-PSFMessage -Level Verbose "OAuth token status: $TokenUpdated (Delta: $([math]::Round($TimeDelta,0)) seconds)"
                     }
-                    if ( $TokenUpdated ) {
+                    if ( $TokenUpdated -and $NewSnowAuth.Token.refresh_token) {
                         $Script:SnowEnvironmentAuth.ExpiresInSeconds = ($NewSnowAuth.Token.expires_in)  
                         Write-PSFMessage -Level Important "ServiceNow OAuth token refreshed for $($SecretValue.Instance). New expiry in $($NewSnowAuth.Token.expires_in) seconds."
+                        
                         Set-SNOWMidEnvironmentSecret -Instance $NewSnowAuth.Instance `
                             -ClientID $NewSnowAuth.ClientId `
                             -AccessToken $NewSnowAuth.Token.access_token `
