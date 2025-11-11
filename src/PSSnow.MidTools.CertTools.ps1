@@ -4,85 +4,17 @@ using namespace System.Collections.Generic
 using namespace System.Formats.Asn1
 using namespace System.Security.Cryptography
 using namespace System.Security.Cryptography.X509Certificates
-
-
-function Resolve-SNOWMidAzCertificate {
-    Param(
-        [Parameter(Mandatory = $true)]
-        [string]$VaultName,
-        [Parameter(Mandatory = $true)]
-        [string]$CertName,
-        [System.IO.FileInfo]$OutputPath,
-        [switch]$SavePem,
-        [switch]$SavePfx
-    )
-    $Out = @{}
-    $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
-    $Cert = (Get-AzKeyVaultCertificate -VaultName $VaultName -Name $CertName -ErrorAction SilentlyContinue)
-    if ($Cert -and $Cert.SecretId) {
-        $CertSecret = Get-AzKeyVaultSecret -SecretId $Cert.SecretId -ErrorAction SilentlyContinue
-        switch ($CertSecret.ContentType) {
-            'application/x-pem-file' {
-                $CertPem = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText)))
-                $Collection.ImportFromPem($CertPem)
-            }
-            'application/x-pkcs12' {
-                $CertPfx = [Convert]::FromBase64String(($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText))
-                $Collection.Import($CertPfx, '', [X509KeyStorageFlags]::Exportable)
-            }
-        }
-    }
-    if ($Collection.Count -eq 0) {
-        Write-PSFMessage "Certificate $CertName not found in Key Vault $VaultName. Skipping export."
-        return $Out
-    }
-    $PemSecretName = "${CertName}-mid-pem"
-    $CurrentPemSecret = Get-AzKeyVaultSecret -VaultName $VaultName -Name $PemSecretName -AsPlainText -ErrorAction SilentlyContinue
-    $PEMContent = @($Collection[0].PrivateKey.ExportPkcs8PrivateKeyPem(), $Collection.ExportCertificatePems()) -join "`n"
-    $PEMSecretContent = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(( $PEMContent )))
-    
-    if ($CurrentPemSecret -eq $PEMSecretContent) {
-        Write-PSFMessage "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
-    }
-    else {
-        Write-PSFMessage "Updating PEM secret $PemSecretName in Key Vault $VaultName"
-        $PemSecret = Set-AzKeyVaultSecret -VaultName $VaultName -Name $PemSecretName -SecretValue (ConvertTo-SecureString -String $PEMSecretContent -AsPlainText -Force) -ErrorAction SilentlyContinue
-    }
-    $Out.PemSecret = Get-AzKeyVaultSecret -VaultName $VaultName -Name $PemSecretName -ErrorAction SilentlyContinue
-    $Out.Collection = $Collection
-    $Out.Certificate = $Collection[0]
-    $Out.Thumbprint = $Collection[0].Thumbprint
-    $Out.PublicKeyInfo = [Convert]::ToBase64String($Collection[0].PublicKey.ExportSubjectPublicKeyInfo())
-    Write-PSFMessage "Certificate $CertName found in Key Vault $VaultName with thumbprint $($Collection[0].Thumbprint)"
-    if ($OutputPath) {
-        $Out += @{
-            PfxPath     = Join-Path -Path $OutputPath -ChildPath "${CertName}.pfx"
-            PemPath     = Join-Path -Path $OutputPath -ChildPath "${CertName}.pem"
-            CertPemPath = Join-Path -Path $OutputPath -ChildPath "${CertName}-cert.pem"
-        }
-        if ($SavePfx) {
-            $Pfx = $Collection.Export([X509ContentType]::Pkcs12)
-            Write-PSFMessage "Exporting certificate to $($Out.PfxPath)"
-            Set-Content -Path $Out.PfxPath -Value $Pfx -AsByteStream
-        }
-        if ($SavePem) {
-            $PEMContent = @($Collection[0].PrivateKey.ExportPkcs8PrivateKeyPem(), $Collection.ExportCertificatePems()) -join "`n"
-            Write-PSFMessage "Exporting certificates to $($Out.PemPath)"
-            $CertPemContent = $Collection.ExportCertificatePems() -join "`n"
-            $PEMContent | Set-Content -Path $Out.PemPath -Encoding utf8
-            $CertPemContent | Set-Content -Path $Out.CertPemPath -Encoding utf8
-        }
-    }
-    return $Out
-}
-
+using namespace System.Security.Cryptography.X509Certificates.Extensions
 
 function Get-VaultCertificateCommon {
     Param(
         [string]$VaultName,
         [string]$CertificateName
     )
-    $Out = @{}
+    $Out = @{
+        Name = $CertificateName
+        VaultName = $VaultName
+    }
     $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
     $SecretVault = Get-SecretVault -Name $VaultName -ErrorAction Stop
     if ($SecretVault.ModuleName -eq 'Az.KeyVault') {
@@ -91,12 +23,25 @@ function Get-VaultCertificateCommon {
             $CertSecret = Get-AzKeyVaultSecret -SecretId $Cert.SecretId -ErrorAction SilentlyContinue
             switch ($CertSecret.ContentType) {
                 'application/x-pem-file' {
-                    $CertPem = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText)))
-                    $Collection.ImportFromPem($CertPem)
+                    $Collection = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+                    try{
+                        $CertPem = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText)))
+                    }catch{
+                        Write-PSFMessage -Level Important "Failed to decode PEM certificate $CertificateName in Key Vault $VaultName. The secret may not be in the expected format."
+                        $CertPem = ($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText)
+                    }
+                    $RSAKey = [System.Security.Cryptography.RSA]::Create()
+                    $RSAKey.ImportFromPem($CertPem)
+                    $Cert = [X509Certificate2]::CreateFromPem($CertPem)
+                    $PrivateCert = [RSACertificateExtensions]::CopyWithPrivateKey($Cert, [RSA]$RSAKey)
+                    $Collection.Add($PrivateCert) | Out-Null
                 }
                 'application/x-pkcs12' {
                     $CertPfx = [Convert]::FromBase64String(($CertSecret.SecretValue | ConvertFrom-SecureString -AsPlainText))
                     $Collection.Import($CertPfx, '', [X509KeyStorageFlags]::Exportable)
+                    Write-PSFMessage -Level Warning "Certificate $CertificateName in Key Vault $VaultName is in PFX format. Will convert to PEM keypair format for storage."
+                    $PEMContent = getCertificateCollectionPEM -Collection $Collection -IncludePrivateKey -AsBase64
+                    Import-AzKeyVaultCertificate -VaultName $SecretVault.VaultParameters.AZKVaultName -Name $CertificateName -CertificateString $PEMContent -ContentType "application/x-pem-file" | Out-Null
                 }
             }
         }
@@ -117,19 +62,6 @@ function Get-VaultCertificateCommon {
     $Out.Certificate = $Collection[0]
     $Out.Thumbprint = $Collection[0].Thumbprint
     $Out.PublicKeyInfo = [Convert]::ToBase64String($Collection[0].PublicKey.ExportSubjectPublicKeyInfo())
-    $PemSecretName = "${CertificateName}-mid-pem"
-    $CurrentPemSecret = Get-Secret -Vault $VaultName -Name $PemSecretName -AsPlainText -ErrorAction SilentlyContinue
-    $PEMSecretContent = getCertificateCollectionPEM -Collection $Collection -AsBase64 -IncludePrivateKey
-    if ($CurrentPemSecret -and $CurrentPemSecret -eq $PEMSecretContent) {
-        
-        Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName is up to date"
-    }
-    else {
-        Write-PSFMessage -Level Important "Updating PEM secret $PemSecretName in Key Vault $VaultName"
-        Set-Secret -Vault $VaultName -Name $PemSecretName -Secret $PEMSecretContent -ErrorAction Stop
-        Write-PSFMessage -Level Verbose "PEM secret $PemSecretName in Key Vault $VaultName has been updated"
-    }
-    $Out.PemSecret = Get-SecretInfo -Vault $VaultName -Name $PemSecretName -ErrorAction SilentlyContinue
     return $Out
 }
     
@@ -152,7 +84,14 @@ function Set-VaultCertificateCommon {
             return $CurrentCertificate
         }
         else {
-            Import-AzKeyVaultCertificate -VaultName $SecretVault.VaultParameters.AZKVaultName -Name $CertificateName -CertificateCollection $Collection | Out-Null
+            $PEMSecretContent = getCertificateCollectionPEM -Collection $Collection -AsBase64 -IncludePrivateKey
+            $ImportParams = @{
+                VaultName         = $SecretVault.VaultParameters.AZKVaultName
+                Name              = $CertificateName
+                CertificateString = $PEMSecretContent
+                ContentType       = "application/x-pem-file"
+            }
+            Import-AzKeyVaultCertificate @ImportParams | Out-Null
         }
         return Get-VaultCertificateCommon -VaultName $VaultName -CertificateName $CertificateName
     }
@@ -438,7 +377,7 @@ function Get-SNOWMidMutualAuthState {
     }
     catch { 
         Write-PSFMessage -Level Important "Mutual authentication support check failed. https://support.servicenow.com/kb?id=kb_article_view&sysparm_article=KB1116112 may provide more information."
-     }
+    }
     $sys_ca_certificate = Get-SNOWObject -Table 'sys_ca_certificate' -Query "name=$RootCN" -ErrorAction SilentlyContinue
     @{
         Valid              = ($sys_ca_certificate -and $sys_ca_certificate.active `

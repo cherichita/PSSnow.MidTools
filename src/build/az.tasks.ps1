@@ -242,8 +242,9 @@ task AzResolveMidServerContext AzResolveContext, {
 }
 
 task AzDeployMidServers AzResolveMidServerContext, {
+    $TimeStamp = Get-Date -Format "yyyyMMddHHmmss"
     $DeployParams = @{
-        Name                  = 'SSDMIDServerDeploy-' + $env:SN_MID_ENVIRONMENT_NAME
+        Name                  = 'SSDMIDServerDeploy-' + $env:SN_MID_ENVIRONMENT_NAME + "-$TimeStamp"
         ResourceGroupName     = $AzureSettings.resource_group
         TemplateFile          = $BicepSource
         TemplateParameterFile = $ParameterFile

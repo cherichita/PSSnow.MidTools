@@ -35,7 +35,7 @@ if ($UseCertificates) {
     $RootCA = Set-SNOWMidRootCertificate -VaultName $ctx.Vault.VaultName -RootCN $RootCACommonName -ErrorAction Stop
     $MidCert = Set-SNOWMidServerCertificate -VaultName $ctx.Vault.VaultName -LeafCN $MidCertCommonName -Signer $RootCA.Collection[0] -ErrorAction Stop
     $DeploymentScriptOutputs.MidCert = $MidCert
-    $DeploymentScriptOutputs.SecretEnvVars.MID_SERVER_PEM_BASE64 = $MidCert.PemSecret.Name
+    $DeploymentScriptOutputs.SecretEnvVars.MID_SERVER_PEM_BASE64 = $MidCert.Name
     $DeploymentScriptOutputs.EntryPoint = @('/bin/bash')
     $DeploymentScriptOutputs.Cmd = @(
         '-c'

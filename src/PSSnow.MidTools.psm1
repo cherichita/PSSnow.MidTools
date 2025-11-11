@@ -829,7 +829,7 @@ function Set-SNOWMIDServerUser {
         [string[]]$Capabilities = @('ALL'),
         [string]$MidServerCluster = 'azure',
         [hashtable]$UserValues = @{},
-        [string]$DefaultEmailSuffix = '$(MidServerUserName).internal',
+        [string]$DefaultEmailSuffix = "${MidServerUserName}.internal",
         [string]$Operation = 'deploy'
     )
     $MidSecretName = "${MidServerUserName}-password"
